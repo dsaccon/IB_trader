@@ -38,7 +38,7 @@ class MarketDataApp(EClient, EWrapper):
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
 	    permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
-	print(
+        print(
             'orderStatus - orderid:', orderId, 'status:', status,
             'filled', filled, 'remaining', remaining,
             'lastFillPrice', lastFillPrice)
@@ -202,7 +202,7 @@ def parse_args():
         "-b", "--bar-period", type=int, default=60, help="bar time period"
     )
     argp.add_argument(
-        "s", "--size", type=int, default=100, help="Order size"
+        "-s", "--size", type=int, default=100, help="Order size"
     )
     argp.add_argument(
         "-o", "--order-type", type=str, default='MKT', help="Order type"
