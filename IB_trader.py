@@ -1,6 +1,7 @@
 import argparse
 import random
 import pandas as pd
+import numpy as np
 import datetime as dt
 from pytz import timezone
 
@@ -12,20 +13,27 @@ from ibapi.order import Order
 RT_BAR_SIZE = 5
 
 class MarketDataApp(EClient, EWrapper):
-    def __init__(self, period, order_type, size):
+    def __init__(self, period, order_type, order_size):
         EClient.__init__(self, self)
         self.period = period
         self.order_type = order_type
-        self.size = size
-        self.candles = pd.DataFrame(
-            data=[],
-            columns=[
-                'time',
-                'open', 'high', 'low', 'close',
-                'ha_open', 'ha_close', 'ha_high', 'ha_low', 'ha_color',
-            ])
+        self.order_size = order_size
+        df_cols = {
+            'time': [],
+            'open': [],
+            'high': [],
+            'low': [],
+            'close': [],
+            'ha_open': [],
+            'ha_close': [],
+            'ha_high': [],
+            'ha_low': [],
+            'ha_color': [],
+        }
+        self.candles = pd.DataFrame(df_cols)
         self.cache = []
         self.tohlc = tuple()
+        self.first_order = True # Set to False after first order
 
     def error(self, reqId, errorCode, errorString):
         print("Error: ", reqId, " ", errorCode, " ", errorString)
@@ -74,7 +82,7 @@ class MarketDataApp(EClient, EWrapper):
     def _on_update(self):
         # Process 5s updates as received
         self._cache_update(self.tohlc)
-        if self._check_period(self.tohlc):
+        if self._check_period():
             self._update_candles()
             self.cache = []
             if self.candles.shape[0] > 0:
@@ -92,8 +100,11 @@ class MarketDataApp(EClient, EWrapper):
     def _update_candles(self):
         # Bar completed
         if self.cache[-1][0] - self.cache[0][0] + RT_BAR_SIZE == self.period:
-            print('--- Update the candle here')
-            self.candles.append(self._calc_new_candle)
+            _pd = self._calc_new_candle()
+            self.candles = self.candles.append(_pd, ignore_index=True)
+            print('new candle added:')
+            print(self.candles)
+            print('')
         elif self.cache[-1][0] - self.cache[0][0] + RT_BAR_SIZE < self.period:
             # First iteration. Not enough updates for a full period
             print('-- Not enough data for a candle', 'cache len:', len(self.cache))
@@ -111,14 +122,25 @@ class MarketDataApp(EClient, EWrapper):
             # Can only calc heikin-ashi if we have previous data
             ha_ochl = (None, None, None, None) ### Placeholder
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            ha_o = (self.candles.iloc[-1:]['ha_open'] + self.candles.iloc[-1:]['ha_close'])/2
+            ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
             ha_h = max(ohlc[1], ha_o, ha_c)
             ha_l = min(ohlc[2], ha_o, ha_c)
-            ha_color = 'Red' if self.candles.iloc[-1:]['ha_close'] > ha_c else 'Green'
+            ha_color = 'Red' if self.candles['ha_close'].values[-1] > ha_c else 'Green'
             ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         else:
             ha_ochl = (None, None, None, None, None)
-        _pd = (self.cache[-1][0],) + ohlc + ha_ohlc
+        _pd = {
+            'time': self.tohlc[0] ,
+            'open': ohlc[0],
+            'high': ohlc[1],
+            'low': ohlc[2],
+            'close': ohlc[3],
+            'ha_open': ha_ochl[0],
+            'ha_close': ha_ochl[1],
+            'ha_high': ha_ochl[2],
+            'ha_low': ha_ochl[3],
+            'ha_color': ha_ochl[4],
+        }
         return _pd
 
     def _cache_update(self, ohlc):
@@ -126,28 +148,39 @@ class MarketDataApp(EClient, EWrapper):
         self.cache.append(ohlc)
 
     def _check_order_conditions(self):
-        # Check conditions for placing an order
-        if self.candles.iloc[-1:]['ha_color'] == 'Red':
-            # Create sell order
-            size = 1 ### placeholder
-            self._place_order(size)
+        if not isinstance(self.candles['ha_color'].values[-1], str):
+            # Skip if first HA candle not yet available
+            print('First bar, HA not yet available')
+            return
+        #
+        _side = 'Buy'
+        if self.candles['ha_color'].values[-1] == 'Red':
+            _side = 'Sell'
+        #
+        if self.first_order:
+            self._place_order(_side)
+            self.first_order = False
+            self.order_size *= 2
+        elif not self.candles['ha_color'].values[-1] == self.candles['ha_color'].values[-2]:
+            self._place_order(_side)
         else:
-            # Create buy order
-            size = 2 ### placeholder
-            self._place_order(size)
+            print(f"Color: {self.candles['ha_color'].values[-1]}, no order placed")
 
-    def _place_order(self, size):
-        pass
+    def _place_order(self, side):
+        order = self._create_order_obj(side)
+        print('Order -- ', side, self.order_type, self.order_size)
 
-    def _create_order(self, size, side, price):
+    def _create_order_obj(self, side):
         order = Order()
         order.action = side.upper()
-        order.totalQuantity(size)
+        order.totalQuantity = self.order_size
         if self._check_ORH():
             order.orderType = 'LMT'
         else:
             order.orderType = self.order_type
+        price = 1
         order.lmtPrice = price
+        return order
 
     def _check_ORH(self):
         # return True if outside regular hours, else False
