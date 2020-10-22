@@ -1,23 +1,47 @@
+#!/usr/local/bin/python3
+
 import argparse
 import random
 import pandas as pd
 import numpy as np
 import datetime as dt
+import time
 from pytz import timezone
 
 from ibapi.client import EClient
 from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
+from ibapi.ticktype import TickTypeEnum
 from ibapi.order import Order
 
-RT_BAR_SIZE = 5
+pd.set_option('display.max_colwidth', 10)
+pd.set_option('display.float_format', lambda x: '%.f' % x)
+
+class IBConnectionError(Exception):
+    pass
+
+def codes(code):
+    # https://interactivebrokers.github.io/tws-api/message_codes.html
+    if len(str(code)) == 4 and str(code).startswith('1'):
+        return 'SYSTEM'
+    elif len(str(code)) == 4 and str(code).startswith('21'):
+        return 'WARNING'
+    elif len(str(code)) == 3 and str(code).startswith('5'):
+        return 'CLIENT ERROR'
+    elif len(str(code)) == 3 and int(str(code)[0]) in {1,2,3,4,5} or len(str(code)) == 5:
+        return 'TWS ERROR'
+    else:
+        raise ValueError
 
 class MarketDataApp(EClient, EWrapper):
-    def __init__(self, period, order_type, order_size):
+    RT_BAR_PERIOD = 5
+    def __init__(self, args):
         EClient.__init__(self, self)
-        self.period = period
-        self.order_type = order_type
-        self.order_size = order_size
+        self.args = args
+        self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
+        self.period = args.bar_period
+        self.order_type = args.order_type
+        self.order_size = args.order_size
         df_cols = {
             'time': [],
             'open': [],
@@ -32,11 +56,50 @@ class MarketDataApp(EClient, EWrapper):
         }
         self.candles = pd.DataFrame(df_cols)
         self.cache = []
-        self.tohlc = tuple()
+        self._tohlc = tuple() # Real-time 5s update data from IB
         self.first_order = True # Set to False after first order
+        #
+        self.connect("127.0.0.1", args.port, random.randint(0, 999))
+        while not self.isConnected():
+            print('Connecting to IB..')
+            time.sleep(0.15)
+        self.reqGlobalCancel()
+        self.reqAllOpenOrders() ### tmp
+
+        self.best_bid = None
+        self.best_ask = None
+        self.contract = self._create_contract_obj()
+        ###
+        self.mktData_reqId = random.randint(0, 999)
+        while True:
+            self.rtBars_reqId = random.randint(0, 999)
+            if not self.rtBars_reqId == self.mktData_reqId:
+                break
+        self._subscribe_mktData()
+        self._subscribe_rtBars()
 
     def error(self, reqId, errorCode, errorString):
-        print("Error: ", reqId, " ", errorCode, " ", errorString)
+        print(f'{codes(errorCode)}, {errorCode}, {errorString}')
+
+    def _subscribe_mktData(self):
+        self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
+
+    def _subscribe_rtBars(self):
+        self.reqRealTimeBars(
+            self.rtBars_reqId,
+            self.contract,
+            self.RT_BAR_PERIOD,
+            "MIDPOINT", False, [])
+
+    def tickPrice(self, reqId, tickType, price, attrib):
+	    if tickType == 1 and reqId == self.mktData_reqId:
+                # Bid
+                self.best_bid = price
+                print('Bid update:', price)
+	    if tickType == 2 and reqId == self.mktData_reqId:
+                # Ask
+                self.best_ask = price
+                print('Ask update:', price)
 
     def nextValidId(self, orderId: int):
             super().nextValidId(orderId)
@@ -71,17 +134,18 @@ class MarketDataApp(EClient, EWrapper):
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
-        self.tohlc = (time, open_, high, low, close)
+        self._tohlc = (time, open_, high, low, close)
+        print('--')
         print(
             "RealTimeBar. TickerId:", reqId,
             dt.datetime.fromtimestamp(time), -1,
-            self.tohlc[1:], volume, wap, count)
+            self._tohlc[1:], volume, wap, count)
         #
         self._on_update()
 
     def _on_update(self):
         # Process 5s updates as received
-        self._cache_update(self.tohlc)
+        self._cache_update(self._tohlc)
         if self._check_period():
             self._update_candles()
             self.cache = []
@@ -91,7 +155,7 @@ class MarketDataApp(EClient, EWrapper):
 
     def _check_period(self):
         # Return True if period ends at this update, else False
-        _time = dt.datetime.fromtimestamp(self.tohlc[0])
+        _time = dt.datetime.fromtimestamp(self._tohlc[0])
         total_secs = _time.hour*60 + _time.minute*60 + _time.second
         if total_secs % self.period == 0:
             return True
@@ -99,15 +163,24 @@ class MarketDataApp(EClient, EWrapper):
 
     def _update_candles(self):
         # Bar completed
-        if self.cache[-1][0] - self.cache[0][0] + RT_BAR_SIZE == self.period:
+        if self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD == self.period:
             _pd = self._calc_new_candle()
             self.candles = self.candles.append(_pd, ignore_index=True)
-            print('new candle added:')
-            print(self.candles)
-            print('')
-        elif self.cache[-1][0] - self.cache[0][0] + RT_BAR_SIZE < self.period:
+            #
+            bar_color = None
+            bar_color_prev = None
+            if self.candles.shape[0] > 1:
+                bar_color = self.candles['ha_color'].values[-1].upper()
+            else:
+                # First HA candle not yet available
+                return
+            if self.candles.shape[0] > 2:
+                bar_color_prev = self.candles['ha_color'].values[-2].upper()
+            print('--')
+            print(f"New candle added: {bar_color}. Prev: {bar_color_prev} ")
+        elif self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD < self.period:
             # First iteration. Not enough updates for a full period
-            print('-- Not enough data for a candle', 'cache len:', len(self.cache))
+            print('Not enough data for a candle')
         else:
             raise ValueError
 
@@ -130,7 +203,7 @@ class MarketDataApp(EClient, EWrapper):
         else:
             ha_ochl = (None, None, None, None, None)
         _pd = {
-            'time': self.tohlc[0] ,
+            'time': self._tohlc[0] ,
             'open': ohlc[0],
             'high': ohlc[1],
             'low': ohlc[2],
@@ -150,7 +223,6 @@ class MarketDataApp(EClient, EWrapper):
     def _check_order_conditions(self):
         if not isinstance(self.candles['ha_color'].values[-1], str):
             # Skip if first HA candle not yet available
-            print('First bar, HA not yet available')
             return
         #
         _side = 'Buy'
@@ -164,23 +236,14 @@ class MarketDataApp(EClient, EWrapper):
         elif not self.candles['ha_color'].values[-1] == self.candles['ha_color'].values[-2]:
             self._place_order(_side)
         else:
-            print(f"Color: {self.candles['ha_color'].values[-1]}, no order placed")
+            pass
 
     def _place_order(self, side):
         order = self._create_order_obj(side)
         print('Order -- ', side, self.order_type, self.order_size)
-
-    def _create_order_obj(self, side):
-        order = Order()
-        order.action = side.upper()
-        order.totalQuantity = self.order_size
-        if self._check_ORH():
-            order.orderType = 'LMT'
-        else:
-            order.orderType = self.order_type
-        price = 1
-        order.lmtPrice = price
-        return order
+        self.placeOrder(self.nextorderId, self.contract, self._create_order_obj(side))
+        self.nextorderId += 1
+        #self.reqIds(0)
 
     def _check_ORH(self):
         # return True if outside regular hours, else False
@@ -195,23 +258,36 @@ class MarketDataApp(EClient, EWrapper):
             # Regular trading hours
             return False
 
+    def _create_order_obj(self, side):
+        order = Order()
+        order.action = side.upper()
+        order.totalQuantity = self.order_size
+        if self._check_ORH():
+            order.orderType = self.order_type = 'LMT'
+        else:
+            order.orderType = self.order_type = self.args.order_type
+        price = 0
+        if self.order_type == 'LMT':
+            if side == 'Buy':
+                price = self.best_bid
+            elif side == 'Sell':
+                price = self.best_ask
+        order.lmtPrice = price
+        print('---price:', price)
+        return order
+
+    def _create_contract_obj(self):
+        contract = Contract()
+        contract.symbol = self.args.symbol
+        contract.secType = self.args.security_type
+        contract.exchange = self.args.exchange
+        contract.currency = self.args.currency
+        return contract
+
 def main():
     args = parse_args()
-
-    app = MarketDataApp(args.bar_period, args.order_type, args.size)
-    app.connect("127.0.0.1", args.port, random.randint(0, 999))
-    app.nextorderId = None
-
-    app.reqRealTimeBars(random.randint(0, 999), get_contract(args), RT_BAR_SIZE, "MIDPOINT", False, [])
+    app = MarketDataApp(args)
     app.run()
-
-def get_contract(args):
-    contract = Contract()
-    contract.symbol = args.symbol
-    contract.secType = args.security_type
-    contract.exchange = args.exchange
-    contract.currency = args.currency
-    return contract
 
 def parse_args():
     argp = argparse.ArgumentParser()
@@ -235,7 +311,7 @@ def parse_args():
         "-b", "--bar-period", type=int, default=60, help="bar time period"
     )
     argp.add_argument(
-        "-s", "--size", type=int, default=100, help="Order size"
+        "-s", "--order-size", type=int, default=100, help="Order size"
     )
     argp.add_argument(
         "-o", "--order-type", type=str, default='MKT', help="Order type"
