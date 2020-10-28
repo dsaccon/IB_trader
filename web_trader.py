@@ -22,8 +22,9 @@ class Object(object):
 class TraderAction:
     def __init__(self):
         self.state = {}
+        self.port = None # 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper
 
-    def update_rows(self, instrument):
+    def updates(self, instrument):
         if not self.state.get(instrument[0]):
             self.state[instrument[0]] = {}
             self.state[instrument[0]]['args'] = instrument[1:]
@@ -77,7 +78,7 @@ class TraderAction:
         args.currency = 'USD'
         args.debug = False
         args.exchange = 'SMART'
-        args.port = 4002
+        args.port = self.port
         args.security_type = 'STK'
         args.symbol = instrument
         args.order_size = self.state[instrument]['args'][0]
@@ -137,6 +138,7 @@ def instrument_rows(row_num, display='inline-block', persistence=True):
 
 app.layout = html.Div([
     dcc.Store(id='session-state'),
+    dcc.Store(id='tcp-port'),
     html.H1(
         children='Trade Terminal',
         style={
@@ -145,27 +147,28 @@ app.layout = html.Div([
     ),
     html.Div([
 	dcc.Dropdown(
-	    id='paper_live-dropdown',
+	    id='paper-live-dropdown',
 	    options=[
 		{'label': 'Live', 'value': 'live'},
 		{'label': 'Paper', 'value': 'paper'},
 	    ],
             placeholder="Account Type",
-	    value=None,
+	    value='paper',
+            clearable=False,
             persistence=False,
             style={'width': '35%'}
 	),
     ]),
     html.Br(),
-    daq.BooleanSwitch(
-        id='connect-to-server',
-        on=False,
-        persistence_type='memory',
-        persistence=None,
-        label="Connect to server",
-        labelPosition="left",
-        style={'width': '200px', 'display': 'inline-block'},
-    ),
+#    daq.BooleanSwitch(
+#        id='connect-to-server',
+#        on=False,
+#        persistence_type='memory',
+#        persistence=None,
+#        label="Connect to server",
+#        labelPosition="left",
+#        style={'width': '200px', 'display': 'inline-block'},
+#    ),
     html.Br(),
     html.Br(),
     # Hidden table to give an output target to update_instruments' callback
@@ -191,6 +194,19 @@ def dynamic_rows(num_rows):
     return table
 
 @app.callback(
+            Output('tcp-port', 'data'),
+            [Input('paper-live-dropdown', 'value')],)
+def draw_rows(value):
+    if value == 'paper':
+        _val = 4002
+    elif value == 'live':
+        _val = 4001
+    else:
+        raise ValueError
+    trader_action.port = _val
+    return _val
+
+@app.callback(
             Output('rows-content', 'children'),
             [Input('add-instrument-row', 'n_clicks')],)
 def draw_rows(n_clicks):
@@ -207,7 +223,7 @@ def draw_rows(n_clicks):
 def update_instruments(start_stop, *state):
     instruments = get_instrument_config(state)
     for instrument in instruments:
-        trader_action.update_rows((instrument,) + instruments[instrument])
+        trader_action.updates((instrument,) + instruments[instrument])
     return instruments
 
 
