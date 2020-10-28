@@ -7,6 +7,7 @@ import numpy as np
 import datetime as dt
 import time
 from pytz import timezone
+import logging
 
 from ibapi.client import EClient
 from ibapi.wrapper import EWrapper
@@ -62,7 +63,7 @@ class MarketDataApp(EClient, EWrapper):
         self.connect("127.0.0.1", args.port, random.randint(0, 999))
         while not self.isConnected():
             print('Connecting to IB..')
-            time.sleep(0.15)
+            time.sleep(0.5)
         self.reqGlobalCancel()
         self.reqAllOpenOrders() ### tmp
 
@@ -95,11 +96,11 @@ class MarketDataApp(EClient, EWrapper):
 	    if tickType == 1 and reqId == self.mktData_reqId:
                 # Bid
                 self.best_bid = price
-                print('Bid update:', price)
+                #print('Bid update:', price)
 	    if tickType == 2 and reqId == self.mktData_reqId:
                 # Ask
                 self.best_ask = price
-                print('Ask update:', price)
+                #print('Ask update:', price)
 
     def nextValidId(self, orderId: int):
             super().nextValidId(orderId)
@@ -268,12 +269,12 @@ class MarketDataApp(EClient, EWrapper):
             order.orderType = self.order_type = self.args.order_type
         price = 0
         if self.order_type == 'LMT':
+            order.sweepToFill = True
             if side == 'Buy':
                 price = self.best_bid
             elif side == 'Sell':
                 price = self.best_ask
         order.lmtPrice = price
-        print('---price:', price)
         return order
 
     def _create_contract_obj(self):
@@ -296,7 +297,7 @@ def parse_args():
         "-d", "--debug", action="store_true", help="turn on debug logging"
     )
     argp.add_argument(
-        "-p", "--port", type=int, default=4002, help="local port for TWS connection"
+        "-p", "--port", type=int, default=4002, help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
     )
     argp.add_argument(
         "-c", "--currency", type=str, default="USD", help="currency for symbols"
