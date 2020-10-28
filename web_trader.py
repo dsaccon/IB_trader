@@ -32,7 +32,6 @@ class TraderAction:
             return
         if not self.state[instrument[0]]['args'][-1] == instrument[-1]:
             # Call IB_trader here
-            print(f'change of state to {instrument[0]}, call IB_trader')
             self.state[instrument[0]]['args'] = instrument[1:]
             if self.state[instrument[0]]['args'][-1]:
                 self._start(instrument[0])
