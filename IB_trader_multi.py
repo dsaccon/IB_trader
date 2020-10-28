@@ -36,6 +36,7 @@ def codes(code):
     else:
         raise ValueError
 
+
 class MarketDataApp(EClient, EWrapper):
     RT_BAR_PERIOD = 5
     def __init__(self, client_id, args):
@@ -63,10 +64,8 @@ class MarketDataApp(EClient, EWrapper):
         self._tohlc = tuple() # Real-time 5s update data from IB
         self.first_order = True # Set to False after first order
         #
-        self.connect("127.0.0.1", args.port, self.client_id)
-        while not self.isConnected():
-            print('Connecting to IB..')
-            time.sleep(0.5)
+        self._connect()
+
         self.reqGlobalCancel()
         self.reqAllOpenOrders() ### tmp
 
@@ -84,6 +83,20 @@ class MarketDataApp(EClient, EWrapper):
 
     def error(self, reqId, errorCode, errorString):
         print(f'{codes(errorCode)}, {errorCode}, {errorString}')
+
+    def _connect(self):
+        self.connect("127.0.0.1", self.args.port, self.client_id)
+        while not self.isConnected():
+            print(f'Connecting to IB.. {self.args.symbol}, {self.client_id}')
+            time.sleep(0.5)
+        print(f'Connected - {self.args.symbol}, {self.client_id}')
+
+    def _disconnect(self):
+        self.disconnect()
+        while self.isConnected():
+            time.sleep(0.5)
+            print(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
+        print(f'Disconnected - {self.args.symbol}, {self.client_id}')
 
     def _subscribe_mktData(self):
         self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
@@ -197,7 +210,6 @@ class MarketDataApp(EClient, EWrapper):
         )
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
-            ha_ochl = (None, None, None, None) ### Placeholder
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
             ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
             ha_h = max(ohlc[1], ha_o, ha_c)
@@ -288,7 +300,8 @@ class MarketDataApp(EClient, EWrapper):
         contract.currency = self.args.currency
         return contract
 
-def main():
+def main_cli():
+    # For running the app from the command line
     args = parse_args()
     objs = {}
     while True:
@@ -299,7 +312,7 @@ def main():
         _args = copy.deepcopy(args)
         _args.symbol = instr
         objs[instr] = MarketDataApp(clientIds[i], _args)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(args.symbol)) as executor:
         for instr in args.symbol:
             executor.submit(objs[instr].run)
 
@@ -335,4 +348,4 @@ def parse_args():
     return args
 
 if __name__ == "__main__":
-    main()
+    main_cli()
