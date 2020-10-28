@@ -323,7 +323,7 @@ def parse_args():
         "-d", "--debug", action="store_true", help="turn on debug logging"
     )
     argp.add_argument(
-        "-p", "--port", type=int, default=4002, help="local port for TWS connection"
+        "-p", "--port", type=int, default=4002, help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
     )
     argp.add_argument(
         "-c", "--currency", type=str, default="USD", help="currency for symbols"
