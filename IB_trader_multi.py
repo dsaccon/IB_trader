@@ -5,6 +5,8 @@ import random
 import pandas as pd
 import numpy as np
 import datetime as dt
+import os
+import csv
 import time
 from pytz import timezone
 import logging
@@ -22,6 +24,11 @@ pd.set_option('display.float_format', lambda x: '%.f' % x)
 
 class IBConnectionError(Exception):
     pass
+
+
+class ApplicationLogicError(Exception):
+    pass
+
 
 def codes(code):
     # https://interactivebrokers.github.io/tws-api/message_codes.html
@@ -43,6 +50,9 @@ class MarketDataApp(EClient, EWrapper):
         EClient.__init__(self, self)
         self.args = args
 
+        self.debug_mode = False
+        if args.debug:
+            self.debug_mode = True
         if args.loglevel == 'debug':
             logging.basicConfig(level=logging.DEBUG)
         elif args.loglevel == 'info':
@@ -57,6 +67,18 @@ class MarketDataApp(EClient, EWrapper):
             f' quote_type: {self.args.quote_type},'
             f' order_size: {self.args.order_size},'
             f' bar_period: {self.args.bar_period}')
+
+        self.logfile_candles = 'logs/log_candles.csv'
+        logfile_candles_rows = ('time', 'symbol', 'open', 'high', 'low', 'close', 'ha_open', 'ha_close', 'ha_high', 'ha_low', 'ha_color')
+        self.logfile_orders = 'logs/log_orders.csv'
+        logfile_orders_rows = ('time', 'order_id', 'symbol', 'side', 'order_type', 'size', 'price')
+        if not os.path.isdir('logs/'):
+            os.makedirs('logs')
+        if not os.path.exists(self.logfile_candles):
+            self._write_csv_row((logfile_candles_rows,), self.logfile_candles, newfile=True)
+        if not os.path.exists(self.logfile_orders):
+            self._write_csv_row((logfile_orders_rows,), self.logfile_orders, newfile=True)
+
         self.client_id = client_id
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
         self.period = args.bar_period
@@ -87,6 +109,7 @@ class MarketDataApp(EClient, EWrapper):
         self.cancel_enable = False
 
         self.contract = self._create_contract_obj()
+
         ###
         if not hasattr(self, 'mktData_reqId'):
             # First time init of object
@@ -97,12 +120,22 @@ class MarketDataApp(EClient, EWrapper):
                 self.rtBars_reqId = random.randint(0, 999)
                 if not self.rtBars_reqId == self.mktData_reqId:
                     break
+        if not hasattr(self, 'nextorderId'):
+            self.nextorderId = 0
 
-        # Connect to server and start feeds
-        self._connect()
-        self._cancel_orders(cycle_all=False)
-        self._subscribe_mktData()
-        self._subscribe_rtBars()
+        if not self.debug_mode:
+            # Connect to server and start feeds
+            self._connect()
+            self._cancel_orders(cycle_all=False)
+            self._subscribe_mktData()
+            self._subscribe_rtBars()
+        else:
+            # Run test setup here
+            pass
+            #self._connect()
+            #self._test_setup()
+            #self.reqOpenOrders()
+            #breakpoint()
 
     def error(self, reqId, errorCode, errorString):
         logging.warning(f'{codes(errorCode)}, {errorCode}, {errorString}')
@@ -224,6 +257,15 @@ class MarketDataApp(EClient, EWrapper):
             return True
         return False
 
+    def _write_csv_row(self, row, filename, newfile=False):
+        if newfile:
+            mode = 'w'
+        else:
+            mode = 'a'
+        with open(filename, mode) as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerows(row)
+
     def _update_candles(self):
         # Bar completed
         if self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD == self.period:
@@ -240,7 +282,10 @@ class MarketDataApp(EClient, EWrapper):
             if self.candles.shape[0] > 2:
                 bar_color_prev = self.candles['ha_color'].values[-2].upper()
             logging.info('--')
-            logging.warning(f'New candle added: {bar_color}. Prev: {bar_color_prev}')
+            logging.warning(f'Candle: {self.args.symbol} - {bar_color}, Prev: {bar_color_prev}')
+            csv_row = [col[1] for col in _pd.items()]
+            csv_row.insert(1, self.args.symbol)
+            self._write_csv_row((csv_row,), self.logfile_candles)
         elif self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD < self.period:
             # First iteration. Not enough updates for a full period
             logging.info('Not enough data for a candle')
@@ -257,9 +302,12 @@ class MarketDataApp(EClient, EWrapper):
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
-            ha_h = max(ohlc[1], ha_o, ha_c)
-            ha_l = min(ohlc[2], ha_o, ha_c)
+            #ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
+            ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+            #ha_h = max(ohlc[1], ha_o, ha_c)
+            ha_h = max(ohlc)
+            #ha_l = min(ohlc[2], ha_o, ha_c)
+            ha_l = min(ohlc)
             ha_color = 'Red' if self.candles['ha_close'].values[-1] > ha_c else 'Green'
             ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         else:
@@ -292,19 +340,43 @@ class MarketDataApp(EClient, EWrapper):
             _side = 'Sell'
         #
         if self.first_order:
-            self._place_order(_side)
+            order_obj = self._place_order(_side)
             self.first_order = False
             self.order_size *= 2
         elif not self.candles['ha_color'].values[-1] == self.candles['ha_color'].values[-2]:
-            self._place_order(_side)
+            order_obj = self._place_order(_side)
         else:
-            pass
+            # Candle color same as previous. Do not place an order
+            return
+        pr = order_obj.lmtPrice if order_obj.orderType == 'LMT' else None
+        csv_row = (order_obj.timestamp, order_obj.order_id, self.args.symbol, _side, order_obj.orderType, order_obj.totalQuantity, pr)
+        self._write_csv_row((csv_row,), self.logfile_orders)
 
-    def _place_order(self, side):
-        order = self._create_order_obj(side)
-        logging.warning(f'Order -- {side}, {self.order_type}, {self.order_size}')
-        self.placeOrder(self.nextorderId, self.contract, self._create_order_obj(side))
+    def _test_setup(self):
+        # Sandbox to set up test env
+        self._create_test_order()
+        self._create_test_order()
+        self._create_test_order()
+        self._create_test_order()
+        self._create_test_order()
+
+    def _create_test_order(self, side='Buy'):
+        # Creates a LMT order with a price far away from mid. For testing order cancel
+        obj = self._create_order_obj(side)
+        obj.orderType = 'LMT'
+        obj.lmtPrice = round(0.01 + random.randint(1,100)/100, 2)
+        self._place_order('Buy', order_obj=obj)
+
+    def _place_order(self, side, order_obj=None):
+        if not order_obj:
+            order_obj = self._create_order_obj(side)
+        logging.warning(f'Order: {self.args.symbol}, {order_obj.action}, {order_obj.orderType}, {order_obj.totalQuantity}, {order_obj.lmtPrice}')
+        _ts = dt.datetime.now().timestamp()
+        self.placeOrder(self.nextorderId, self.contract, order_obj)
+        order_obj.timestamp = _ts
+        order_obj.order_id = self.nextorderId
         self.nextorderId += 1
+        return order_obj
 
     def _check_ORH(self):
         # return True if outside regular hours, else False
@@ -332,10 +404,11 @@ class MarketDataApp(EClient, EWrapper):
         if self.order_type == 'LMT':
             order.sweepToFill = True
             if self.args.quote_type == 'mid':
-                price = (self.best_bid + self.best_ask)/2
+                price = round((self.best_bid + self.best_ask)/2, 2)
             elif self.args.quote_type == 'last':
                 price = self.last
         order.lmtPrice = price
+        order.outsideRth = True
         return order
 
     def _create_contract_obj(self):
@@ -360,13 +433,16 @@ def main_cli():
         objs[instr] = MarketDataApp(clientIds[i], _args)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(args.symbol)) as executor:
         for instr in args.symbol:
-            executor.submit(objs[instr].run)
+            executor.submit(objs[instr].run, daemon=True)
 
 def parse_args():
     argp = argparse.ArgumentParser()
     argp.add_argument("symbol", type=str, default=None, nargs='+')
     argp.add_argument(
         "-l", "--loglevel", type=str, default='warning', help="Logging options: debug/info/warning"
+    )
+    argp.add_argument(
+        "-d", "--debug", action='store_const', const=True, default=False, help="Run in debug mode. MarketDataApp will init but not start feeds. And open up a debugger"
     )
     argp.add_argument(
         "-p", "--port", type=int, default=4002, help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
