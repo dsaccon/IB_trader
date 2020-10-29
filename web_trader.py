@@ -39,6 +39,7 @@ class TraderAction:
         self.loglevel = loglevel
         self.state = {}
         self.port = None # 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper
+        self.initial_thread = True # After first thread starts, set to False
 
     def updates(self, instrument):
         if not self.state.get(instrument[0]):
@@ -78,6 +79,9 @@ class TraderAction:
             # First time connecting. Start new thread and init MarketDataApp() obj
             _args = self._make_args(instrument)
             self.state[instrument]['client'] = MarketDataApp(self.state[instrument]['clientId'], _args)
+            if self.initial_thread:
+                # On startup, cancel any active unfilled orders account-wide
+                self.state[instrument]['client'].reqGlobalCancel()
             self.state[instrument]['thread'] = threading.Thread(target=self.state[instrument]['client'].run, daemon=True) 
             self.state[instrument]['thread'].start()
 
@@ -103,6 +107,7 @@ class TraderAction:
         args = Object()
         args.currency = 'USD'
         args.loglevel = 'info'
+        args.debug = False
         args.exchange = 'SMART'
         args.port = self.port
         args.security_type = 'STK'
@@ -191,27 +196,12 @@ app.layout = html.Div([
 	),
     ]),
     html.Br(),
-#    daq.BooleanSwitch(
-#        id='connect-to-server',
-#        on=False,
-#        persistence_type='memory',
-#        persistence=None,
-#        label="Connect to server",
-#        labelPosition="left",
-#        style={'width': '200px', 'display': 'inline-block'},
-#    ),
     html.Br(),
     # Hidden table to give an output target to update_instruments' callback
     html.Table([html.Tr([html.Td(c, style={'display': 'none'}) for c in instrument_rows(n, display='none')]) for n in range(0, MAX_INSTRUMENTS)]),
     html.Table(id='rows-content'),
     html.Br(),
     html.Button(id='add-instrument-row', n_clicks=0, children='Add instrument'),
-
-#    # Hidden div to give an output target to update_instruments' callback
-#    html.Div(id='dummy-div', style={'display': 'none'})
-
-#    # Hidden div to store number of rows in table
-#    html.Div(id='num-instruments', style={'display': 'none'})
 ])
 
 def dynamic_rows(num_rows):
