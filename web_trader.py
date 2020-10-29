@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import time
 import random
+import logging
+import argparse
 import threading
 import dash
 import dash_daq as daq
@@ -16,11 +18,25 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 MAX_INSTRUMENTS = 100
 
+argp = argparse.ArgumentParser()
+argp.add_argument(
+    "-l", "--loglevel", type=str, default='warning', help="Logging options: debug/info/warning"
+)
+args = argp.parse_args()
+
+if args.loglevel == 'info':
+    logging.basicConfig(level=logging.INFO)
+elif args.loglevel == 'warning':
+    logging.basicConfig(level=logging.WARNING)
+else:
+    raise ValueError
+
 class Object(object):
     pass
 
 class TraderAction:
-    def __init__(self):
+    def __init__(self, loglevel):
+        self.loglevel = loglevel
         self.state = {}
         self.port = None # 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper
 
@@ -53,7 +69,7 @@ class TraderAction:
         if self.state[instrument].get('client'):
             # Reconnect. Re-init MarketDataApp() obj to reconnect in existing thread
             if not self.state[instrument]['thread'].is_alive:
-                print(f"Thread for {instrument}, {self.state[instrument]['clientId']} is down")
+                logging.info(f"WEB: Thread for {instrument}, {self.state[instrument]['clientId']} is down")
                 raise Exception
             _args = self._make_args(instrument)
             self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args)
@@ -79,14 +95,14 @@ class TraderAction:
                 if not self.state[instrument]['thread'].is_alive:
                     break
                 else:
-                    print(f'Waiting for thread to stop: {instrument}')
+                    logging.info(f'WEB: Waiting for thread to stop: {instrument}')
                     time.sleep(0.5)
-            print(f'Thread stopped: {instrument}')
+            logging.info(f'WEB: Thread stopped: {instrument}')
 
     def _make_args(self, instrument):
         args = Object()
         args.currency = 'USD'
-        args.debug = False
+        args.loglevel = 'info'
         args.exchange = 'SMART'
         args.port = self.port
         args.security_type = 'STK'
@@ -98,16 +114,9 @@ class TraderAction:
             args.quote_type = self.state[instrument]['args'][2][4:]
         else:
             args.quote_type = 'last'
-        print('here..') ### tmp
-        print(args.symbol)
-        print(args.order_size)
-        print(args.order_type)
-        print(args.quote_type)
-        print(args.bar_period)
-        print('there..')
         return args
 
-trader_action = TraderAction()
+trader_action = TraderAction(args.loglevel)
 
 #
 def instrument_rows(row_num, display='inline-block', persistence=True):
