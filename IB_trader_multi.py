@@ -42,6 +42,13 @@ class MarketDataApp(EClient, EWrapper):
     def __init__(self, client_id, args):
         EClient.__init__(self, self)
         self.args = args
+        print(
+            f'Starting with args -'
+            f' symbol: {self.args.symbol},'
+            f' order_type: {self.args.order_type},'
+            f' quote_type: {self.args.quote_type},'
+            f' order_size: {self.args.order_size},'
+            f' bar_period: {self.args.bar_period}')
         self.client_id = client_id
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
         self.period = args.bar_period
@@ -63,65 +70,53 @@ class MarketDataApp(EClient, EWrapper):
         self.cache = []
         self._tohlc = tuple() # Real-time 5s update data from IB
         self.first_order = True # Set to False after first order
+
         #
-        self._connect()
-
-        self.reqGlobalCancel()
-        self.reqAllOpenOrders() ### tmp
-
         self.best_bid = None
         self.best_ask = None
+        self.last = None # Last trade price, as received from RealTimeBars
+
+        self.cancel_enable = False
+
         self.contract = self._create_contract_obj()
         ###
-        self.mktData_reqId = random.randint(0, 999)
-        while True:
-            self.rtBars_reqId = random.randint(0, 999)
-            if not self.rtBars_reqId == self.mktData_reqId:
-                break
+        if not hasattr(self, 'mktData_reqId'):
+            # First time init of object
+            self.mktData_reqId = random.randint(0, 999)
+        if not hasattr(self, 'rtBars_reqId'):
+            # First time init of object
+            while True:
+                self.rtBars_reqId = random.randint(0, 999)
+                if not self.rtBars_reqId == self.mktData_reqId:
+                    break
+
+        # Connect to server and start feeds
+        self._connect()
+        self._cancel_orders(cycle_all=False)
         self._subscribe_mktData()
         self._subscribe_rtBars()
 
     def error(self, reqId, errorCode, errorString):
         print(f'{codes(errorCode)}, {errorCode}, {errorString}')
 
-    def _connect(self):
-        self.connect("127.0.0.1", self.args.port, self.client_id)
-        while not self.isConnected():
-            print(f'Connecting to IB.. {self.args.symbol}, {self.client_id}')
-            time.sleep(0.5)
-        print(f'Connected - {self.args.symbol}, {self.client_id}')
-
-    def _disconnect(self):
-        self.disconnect()
-        while self.isConnected():
-            time.sleep(0.5)
-            print(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
-        print(f'Disconnected - {self.args.symbol}, {self.client_id}')
-
-    def _subscribe_mktData(self):
-        self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
-
-    def _subscribe_rtBars(self):
-        self.reqRealTimeBars(
-            self.rtBars_reqId,
-            self.contract,
-            self.RT_BAR_PERIOD,
-            "MIDPOINT", False, [])
-
     def tickPrice(self, reqId, tickType, price, attrib):
-	    if tickType == 1 and reqId == self.mktData_reqId:
-                # Bid
-                self.best_bid = price
-                #print('Bid update:', price)
-	    if tickType == 2 and reqId == self.mktData_reqId:
-                # Ask
-                self.best_ask = price
-                #print('Ask update:', price)
+        if tickType == 1 and reqId == self.mktData_reqId:
+            # Bid
+            self.best_bid = price
+            print('Bid update:', price)
+        if tickType == 2 and reqId == self.mktData_reqId:
+            # Ask
+            self.best_ask = price
+            print('Ask update:', price)
+        if tickType == 4 and reqId == self.mktData_reqId:
+            # Last
+            self.last = price
+            print('Last trade update:', price)
 
     def nextValidId(self, orderId: int):
-            super().nextValidId(orderId)
-            self.nextorderId = orderId
-            print('The next valid order id is: ', self.nextorderId)
+        super().nextValidId(orderId)
+        self.nextorderId = orderId
+        print('The next valid order id is: ', self.nextorderId)
 
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
@@ -132,6 +127,9 @@ class MarketDataApp(EClient, EWrapper):
             'lastFillPrice', lastFillPrice)
 
     def openOrder(self, orderId, contract, order, orderState):
+        if self.cancel_enable:
+            self.cancelOrder(orderId)
+            return
         print(
             'openOrder id:', orderId, contract.symbol, contract.secType,
             '@', contract.exchange, ':', order.action, order.orderType,
@@ -158,7 +156,47 @@ class MarketDataApp(EClient, EWrapper):
             dt.datetime.fromtimestamp(time), -1,
             self._tohlc[1:], volume, wap, count)
         #
-        self._on_update()
+        if self.last and self.best_bid and self.best_ask:
+            # Don't start processing data until we get the first msgs from data feed
+            self._on_update()
+
+    def _cancel_orders(self, cycle_all=True):
+        # 2 methods below for canceling orders
+
+        if cycle_all:
+            # Cycle through all possible orders from this session and cancel
+            for _id in range(1, self.nextorderId + 1):
+                self.cancelOrder(_id)
+        else:
+            self.cancel_enable = True
+            self.reqOpenOrders()
+            time.sleep(1) # Give one second to cancel orders
+            self.cancel_enable = False
+
+    def _connect(self):
+        print('port', self.args.port, 'client_id', self.client_id)
+        self.connect("127.0.0.1", self.args.port, self.client_id)
+        while not self.isConnected():
+            print(f'Connecting to IB.. {self.args.symbol}, {self.client_id}')
+            time.sleep(0.5)
+        print(f'Connected - {self.args.symbol}, {self.client_id}')
+
+    def _disconnect(self):
+        self.disconnect()
+        while self.isConnected():
+            time.sleep(0.5)
+            print(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
+        print(f'Disconnected - {self.args.symbol}, {self.client_id}')
+
+    def _subscribe_mktData(self):
+        self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
+
+    def _subscribe_rtBars(self):
+        self.reqRealTimeBars(
+            self.rtBars_reqId,
+            self.contract,
+            self.RT_BAR_PERIOD,
+            "MIDPOINT", False, [])
 
     def _on_update(self):
         # Process 5s updates as received
@@ -259,7 +297,6 @@ class MarketDataApp(EClient, EWrapper):
         print('Order -- ', side, self.order_type, self.order_size)
         self.placeOrder(self.nextorderId, self.contract, self._create_order_obj(side))
         self.nextorderId += 1
-        #self.reqIds(0)
 
     def _check_ORH(self):
         # return True if outside regular hours, else False
@@ -279,16 +316,17 @@ class MarketDataApp(EClient, EWrapper):
         order.action = side.upper()
         order.totalQuantity = self.order_size
         if self._check_ORH():
+            # Note here: self.order_type can deviate from self.args.order_type
             order.orderType = self.order_type = 'LMT'
         else:
             order.orderType = self.order_type = self.args.order_type
         price = 0
         if self.order_type == 'LMT':
             order.sweepToFill = True
-            if side == 'Buy':
-                price = self.best_bid
-            elif side == 'Sell':
-                price = self.best_ask
+            if self.args.quote_type == 'mid':
+                price = (self.best_bid + self.best_ask)/2
+            elif self.args.quote_type == 'last':
+                price = self.last
         order.lmtPrice = price
         return order
 
@@ -341,7 +379,10 @@ def parse_args():
         "-s", "--order-size", type=int, default=100, help="Order size"
     )
     argp.add_argument(
-        "-o", "--order-type", type=str, default='MKT', help="Order type"
+        "-o", "--order-type", type=str, default='MKT', help="Order type (MKT/LMT)"
+    )
+    argp.add_argument(
+        "-q", "--quote-type", type=str, default='last', help="Quote type (mid/last). Only used with LMT order type"
     )
 
     args = argp.parse_args()
