@@ -47,24 +47,34 @@ class TraderAction:
         return _id
 
     def _start(self, instrument):
+        if not self.port:
+            # Handling for edge case, when restart script but previous browser state has row data, triggering callback
+            return
         if self.state[instrument].get('client'):
+            # Reconnect. Re-init MarketDataApp() obj to reconnect in existing thread
             if not self.state[instrument]['thread'].is_alive:
                 print(f"Thread for {instrument}, {self.state[instrument]['clientId']} is down")
                 raise Exception
-            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], self._make_args(instrument))
+            _args = self._make_args(instrument)
+            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args)
+            self.state[instrument]['client'].run()
         else:
+            # First time connecting. Start new thread and init MarketDataApp() obj
             _args = self._make_args(instrument)
             self.state[instrument]['client'] = MarketDataApp(self.state[instrument]['clientId'], _args)
             self.state[instrument]['thread'] = threading.Thread(target=self.state[instrument]['client'].run, daemon=True) 
             self.state[instrument]['thread'].start()
 
     def _stop(self, instrument, stop_thread=False):
+        # Cancel any outstanding orders
+        self.state[instrument]['client']._cancel_orders()
+
         # First do a disconnect with the server
         self.state[instrument]['client']._disconnect()
         
         if stop_thread:
             # Stop thread
-            # ...
+            # ... not implemented
             while True:
                 if not self.state[instrument]['thread'].is_alive:
                     break
@@ -81,9 +91,20 @@ class TraderAction:
         args.port = self.port
         args.security_type = 'STK'
         args.symbol = instrument
-        args.order_size = self.state[instrument]['args'][0]
-        args.bar_period = self.state[instrument]['args'][1]
-        args.order_type = self.state[instrument]['args'][2]
+        args.order_size = int(self.state[instrument]['args'][0])
+        args.bar_period = int(self.state[instrument]['args'][1])
+        args.order_type = self.state[instrument]['args'][2][:3]
+        if self.state[instrument]['args'][2][4:] in ('last', 'mid'):
+            args.quote_type = self.state[instrument]['args'][2][4:]
+        else:
+            args.quote_type = 'last'
+        print('here..') ### tmp
+        print(args.symbol)
+        print(args.order_size)
+        print(args.order_type)
+        print(args.quote_type)
+        print(args.bar_period)
+        print('there..')
         return args
 
 trader_action = TraderAction()
@@ -118,8 +139,9 @@ def instrument_rows(row_num, display='inline-block', persistence=True):
         dcc.Dropdown(
             id=f'{row_num}-row-input-order-type',
             options=[
-                {'label': 'MKT', 'value': 'market'},
-                {'label': 'LMT', 'value': 'limit'},
+                {'label': 'MKT', 'value': 'MKT'},
+                {'label': 'LMT (last)', 'value': 'LMT_last'},
+                {'label': 'LMT (mid)', 'value': 'LMT_mid'},
             ],
             value=None,
             persistence_type='memory',
@@ -169,7 +191,6 @@ app.layout = html.Div([
 #        labelPosition="left",
 #        style={'width': '200px', 'display': 'inline-block'},
 #    ),
-    html.Br(),
     html.Br(),
     # Hidden table to give an output target to update_instruments' callback
     html.Table([html.Tr([html.Td(c, style={'display': 'none'}) for c in instrument_rows(n, display='none')]) for n in range(0, MAX_INSTRUMENTS)]),
