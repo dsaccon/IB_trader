@@ -42,7 +42,15 @@ class MarketDataApp(EClient, EWrapper):
     def __init__(self, client_id, args):
         EClient.__init__(self, self)
         self.args = args
-        print(
+
+        if args.loglevel == 'debug':
+            logging.basicConfig(level=logging.DEBUG)
+        elif args.loglevel == 'info':
+            logging.basicConfig(level=logging.INFO)
+        elif args.loglevel == 'warning':
+            logging.basicConfig(level=logging.WARNING)
+
+        logging.info(
             f'Starting with args -'
             f' symbol: {self.args.symbol},'
             f' order_type: {self.args.order_type},'
@@ -97,64 +105,64 @@ class MarketDataApp(EClient, EWrapper):
         self._subscribe_rtBars()
 
     def error(self, reqId, errorCode, errorString):
-        print(f'{codes(errorCode)}, {errorCode}, {errorString}')
+        logging.warning(f'{codes(errorCode)}, {errorCode}, {errorString}')
 
     def tickPrice(self, reqId, tickType, price, attrib):
         if tickType == 1 and reqId == self.mktData_reqId:
             # Bid
             self.best_bid = price
-            print('Bid update:', price)
+            logging.info(f'Bid update: {price}')
         if tickType == 2 and reqId == self.mktData_reqId:
             # Ask
             self.best_ask = price
-            print('Ask update:', price)
+            logging.info(f'Ask update: {price}')
         if tickType == 4 and reqId == self.mktData_reqId:
             # Last
             self.last = price
-            print('Last trade update:', price)
+            logging.info(f'Last trade update: {price}')
 
     def nextValidId(self, orderId: int):
         super().nextValidId(orderId)
         self.nextorderId = orderId
-        print('The next valid order id is: ', self.nextorderId)
+        logging.info(f'The next valid order id is: {self.nextorderId}')
 
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
 	    permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
-        print(
-            'orderStatus - orderid:', orderId, 'status:', status,
-            'filled', filled, 'remaining', remaining,
-            'lastFillPrice', lastFillPrice)
+        logging.info(
+            f'orderStatus - orderid: {orderId}, status: {status}'
+            f'filled: {filled}, remaining: {remaining}'
+            f'lastFillPrice: {lastFillPrice}')
 
     def openOrder(self, orderId, contract, order, orderState):
         if self.cancel_enable:
             self.cancelOrder(orderId)
             return
-        print(
-            'openOrder id:', orderId, contract.symbol, contract.secType,
-            '@', contract.exchange, ':', order.action, order.orderType,
-            order.totalQuantity, orderState.status)
+        logging.info(
+            f'openOrder id: {orderId}, {contract.symbol}, {contract.secType},'
+            f'@, {contract.exchange}, {order.action}, {order.orderType},'
+            f'{order.totalQuantity}, {orderState.status}')
 
     def execDetails(self, reqId, contract, execution):
-        print(
-            'Order Executed: ', reqId, contract.symbol,
-            contract.secType, contract.currency, execution.execId,
-            execution.orderId, execution.shares, execution.lastLiquidity)
+        logging.info(
+            f'Order Executed: {reqId}, {contract.symbol},'
+            f'{contract.secType}, {contract.currency}, {execution.execId},'
+            f'{execution.orderId}, {execution.shares}, {execution.lastLiquidity}')
 
     def historicalData(self, reqId, bar):
-        print(
-            "HistoricalData: ", reqId, "Date:", bar.date,
-            "Open:", bar.open, "High:", bar.high,
-            "Low:", bar.low, "Close:", bar.close)
+        logging.info(
+            f'HistoricalData: {reqId}, Date: {bar.date},'
+            f'Open: {bar.open}, High: {bar.high},'
+            f'Low: {bar.low}, Close: {bar.close}')
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         self._tohlc = (time, open_, high, low, close)
-        print('--')
-        print(
-            "RealTimeBar. TickerId:", reqId,
-            dt.datetime.fromtimestamp(time), -1,
-            self._tohlc[1:], volume, wap, count)
+        logging.info('--')
+        logging.info(
+            f'RealTimeBar. TickerId: {reqId},'
+            f'{dt.datetime.fromtimestamp(time)}, -1,'
+            f'{self._tohlc[1:]}, {volume}, {wap}, {count}')
         #
         if self.last and self.best_bid and self.best_ask:
             # Don't start processing data until we get the first msgs from data feed
@@ -174,19 +182,19 @@ class MarketDataApp(EClient, EWrapper):
             self.cancel_enable = False
 
     def _connect(self):
-        print('port', self.args.port, 'client_id', self.client_id)
+        logging.info(f'port: {self.args.port}, client_id {self.client_id}')
         self.connect("127.0.0.1", self.args.port, self.client_id)
         while not self.isConnected():
-            print(f'Connecting to IB.. {self.args.symbol}, {self.client_id}')
+            logging.info(f'Connecting to IB.. {self.args.symbol}, {self.client_id}')
             time.sleep(0.5)
-        print(f'Connected - {self.args.symbol}, {self.client_id}')
+        logging.info(f'Connected - {self.args.symbol}, {self.client_id}')
 
     def _disconnect(self):
         self.disconnect()
         while self.isConnected():
             time.sleep(0.5)
-            print(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
-        print(f'Disconnected - {self.args.symbol}, {self.client_id}')
+            logging.info(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
+        logging.info(f'Disconnected - {self.args.symbol}, {self.client_id}')
 
     def _subscribe_mktData(self):
         self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
@@ -231,11 +239,11 @@ class MarketDataApp(EClient, EWrapper):
                 return
             if self.candles.shape[0] > 2:
                 bar_color_prev = self.candles['ha_color'].values[-2].upper()
-            print('--')
-            print(f"New candle added: {bar_color}. Prev: {bar_color_prev} ")
+            logging.info('--')
+            logging.warning(f'New candle added: {bar_color}. Prev: {bar_color_prev}')
         elif self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD < self.period:
             # First iteration. Not enough updates for a full period
-            print('Not enough data for a candle')
+            logging.info('Not enough data for a candle')
         else:
             raise ValueError
 
@@ -294,7 +302,7 @@ class MarketDataApp(EClient, EWrapper):
 
     def _place_order(self, side):
         order = self._create_order_obj(side)
-        print('Order -- ', side, self.order_type, self.order_size)
+        logging.warning(f'Order -- {side}, {self.order_type}, {self.order_size}')
         self.placeOrder(self.nextorderId, self.contract, self._create_order_obj(side))
         self.nextorderId += 1
 
@@ -358,7 +366,7 @@ def parse_args():
     argp = argparse.ArgumentParser()
     argp.add_argument("symbol", type=str, default=None, nargs='+')
     argp.add_argument(
-        "-d", "--debug", action="store_true", help="turn on debug logging"
+        "-l", "--loglevel", type=str, default='warning', help="Logging options: debug/info/warning"
     )
     argp.add_argument(
         "-p", "--port", type=int, default=4002, help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
