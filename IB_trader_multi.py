@@ -243,6 +243,7 @@ class MarketDataApp(EClient, EWrapper):
         # Process 5s updates as received
         self._cache_update(self._tohlc)
         if self._check_period():
+            # On HA candle tick point
             self._update_candles()
             self.cache = []
             if self.candles.shape[0] > 0:
