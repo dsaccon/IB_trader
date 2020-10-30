@@ -10,7 +10,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State
 
-from IB_trader_multi import MarketDataApp
+from IB_trader import MarketDataApp
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -43,13 +43,14 @@ class TraderAction:
 
     def updates(self, instrument):
         if not self.state.get(instrument[0]):
+            # First time start up for this instrument/symbol
             self.state[instrument[0]] = {}
             self.state[instrument[0]]['args'] = instrument[1:]
             self.state[instrument[0]]['clientId'] = self._get_new_clientId()
             self._start(instrument[0])
             return
         if not self.state[instrument[0]]['args'][-1] == instrument[-1]:
-            # Call IB_trader here
+            # Start/Stop button flipped from previous state
             self.state[instrument[0]]['args'] = instrument[1:]
             if self.state[instrument[0]]['args'][-1]:
                 self._start(instrument[0])
