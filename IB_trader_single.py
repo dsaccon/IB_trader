@@ -275,6 +275,7 @@ class MarketDataApp(EClient, EWrapper):
             elif side == 'Sell':
                 price = self.best_ask
         order.lmtPrice = price
+        order.outsideRth = True
         return order
 
     def _create_contract_obj(self):
