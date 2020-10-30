@@ -399,6 +399,7 @@ class MarketDataApp(EClient, EWrapper):
         if self._check_ORH():
             # Note here: self.order_type can deviate from self.args.order_type
             order.orderType = self.order_type = 'LMT'
+            order.outsideRth = True # Do to avoid seeing warning msg
         else:
             order.orderType = self.order_type = self.args.order_type
         price = 0
@@ -409,7 +410,6 @@ class MarketDataApp(EClient, EWrapper):
             elif self.args.quote_type == 'last':
                 price = self.last
         order.lmtPrice = price
-        order.outsideRth = True
         return order
 
     def _create_contract_obj(self):
