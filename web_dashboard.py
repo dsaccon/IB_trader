@@ -14,7 +14,7 @@ from IB_trader import MarketDataApp
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets, title='Trader')
 
 MAX_INSTRUMENTS = 100
 
@@ -198,11 +198,12 @@ app.layout = html.Div([
     ]),
     html.Br(),
     html.Br(),
-    # Hidden table to give an output target to update_instruments' callback
-    html.Table([html.Tr([html.Td(c, style={'display': 'none'}) for c in instrument_rows(n, display='none')]) for n in range(0, MAX_INSTRUMENTS)]),
     html.Table(id='rows-content'),
     html.Br(),
     html.Button(id='add-instrument-row', n_clicks=0, children='Add instrument'),
+
+    # Hidden table to give an output target to update_instruments' callback
+    html.Table([html.Tr([html.Td(c, style={'display': 'none'}) for c in instrument_rows(n, display='none')]) for n in range(0, MAX_INSTRUMENTS)]),
 ])
 
 def dynamic_rows(num_rows):
@@ -217,7 +218,7 @@ def dynamic_rows(num_rows):
 @app.callback(
             Output('tcp-port', 'data'),
             [Input('paper-live-dropdown', 'value')],)
-def draw_rows(value):
+def update_port(value):
     if value == 'paper':
         _val = 4002
     elif value == 'live':
