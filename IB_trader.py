@@ -303,12 +303,12 @@ class MarketDataApp(EClient, EWrapper):
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            #ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
-            ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
-            #ha_h = max(ohlc[1], ha_o, ha_c)
-            ha_h = max(ohlc)
-            #ha_l = min(ohlc[2], ha_o, ha_c)
-            ha_l = min(ohlc)
+            ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
+            #ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+            ha_h = max(ohlc[1], ha_o, ha_c)
+            #ha_h = max(ohlc)
+            ha_l = min(ohlc[2], ha_o, ha_c)
+            #ha_l = min(ohlc)
             ha_color = 'Red' if self.candles['ha_close'].values[-1] > ha_c else 'Green'
             ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         else:
