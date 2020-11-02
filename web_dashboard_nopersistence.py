@@ -34,6 +34,10 @@ else:
 class Object(object):
     pass
 
+class ApplicationLogicError(Exception):
+    pass
+
+# Object used for interacting with IB_trader
 class TraderAction:
     def __init__(self, loglevel):
         self.loglevel = loglevel
@@ -65,17 +69,18 @@ class TraderAction:
         return _id
 
     def _start(self, instrument):
-        if not self.port:
-            # Handling for edge case, when restart script but previous browser state has row data, triggering callback
-            return
-        if self.state[instrument].get('client'):
+#        if not self.port:
+#            # Handling for edge case, when restart script but previous browser state has row data, triggering callback
+#            return
+
+        if self.state[instrument].get('thread') and self.state[instrument]['thread'].is_alive:
             # Reconnect. Re-init MarketDataApp() obj to reconnect in existing thread
-            if not self.state[instrument]['thread'].is_alive:
-                logging.info(f"WEB: Thread for {instrument}, {self.state[instrument]['clientId']} is down")
-                raise Exception
+            #if self.state[instrument]['thread'].is_alive:
+            #    logging.info(f"WEB: Previous thread for {instrument}, {self.state[instrument]['clientId']} is still up")
+            #    raise ApplicationLogicError
             _args = self._make_args(instrument)
             self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args)
-            self.state[instrument]['client'].run()
+            self.state[instrument]['client']._run()
         else:
             # First time connecting. Start new thread and init MarketDataApp() obj
             _args = self._make_args(instrument)
@@ -83,7 +88,7 @@ class TraderAction:
             if self.initial_thread:
                 # On startup, cancel any active unfilled orders account-wide
                 self.state[instrument]['client'].reqGlobalCancel()
-            self.state[instrument]['thread'] = threading.Thread(target=self.state[instrument]['client'].run, daemon=True) 
+            self.state[instrument]['thread'] = threading.Thread(target=self.state[instrument]['client']._run, daemon=True)
             self.state[instrument]['thread'].start()
 
     def _stop(self, instrument, stop_thread=False):
@@ -104,6 +109,7 @@ class TraderAction:
                     time.sleep(0.5)
             logging.info(f'WEB: Thread stopped: {instrument}')
 
+
     def _make_args(self, instrument):
         args = Object()
         args.currency = 'USD'
@@ -114,7 +120,7 @@ class TraderAction:
         args.security_type = 'STK'
         args.symbol = instrument
         args.order_size = int(self.state[instrument]['args'][0])
-        args.bar_period = int(self.state[instrument]['args'][1])
+        args.bar_period = int(self.state[instrument]['args'][1])*60
         args.order_type = self.state[instrument]['args'][2][:3]
         if self.state[instrument]['args'][2][4:] in ('last', 'mid'):
             args.quote_type = self.state[instrument]['args'][2][4:]
@@ -124,7 +130,40 @@ class TraderAction:
 
 trader_action = TraderAction(args.loglevel)
 
-#
+# Utility functions
+def draw_table(data, len_table):
+    table = [
+        html.Tr([html.Th(c, style={'width': '150px'}) for c in ('Symbol', 'Size', 'Bar period (m)', 'Order type', 'Start/Stop')])
+    ] + [
+        html.Tr([html.Td(c, style={'width': '150px', 'display': 'none'}) for c in instrument_rows(n, display='none')])
+        if n >= len(data)
+        else
+        html.Tr([html.Td(c, style={'width': '150px'}) for c in instrument_rows(n, data=data[n])])
+        for n in range(len_table)
+    ]
+    return table
+
+def get_instrument_config(state, offset):
+    # Parse raw state from update_instruments to get instrument config
+    instruments = []
+    if state:
+        for i in range(offset):
+            if state[i]:
+                instruments.append((state[i], state[i+offset], state[i+2*offset], state[i+3*offset], state[i+4*offset]))
+    else:
+        instruments = ''
+    return instruments
+
+def state_to_rows(state, offset):
+    rows = ['' for _ in range(3*offset)] + [None for _ in range(offset)] + [False for _ in range(offset)]
+    for i, instrument in enumerate(state):
+        rows[i] = instrument
+        rows[i + offset] = state[instrument]['args'][0]
+        rows[i + 2*offset] = state[instrument]['args'][1]
+        rows[i + 3*offset] = state[instrument]['args'][2]
+        rows[i + 4*offset] = state[instrument]['args'][3]
+    return tuple(rows)
+
 def instrument_rows(row_num, data=('', '', '', None, False), display='inline-block', persistence=False):
     row = [
         dcc.Input(
@@ -173,54 +212,7 @@ def instrument_rows(row_num, data=('', '', '', None, False), display='inline-blo
     ]
     return row
 
-def dyn_instrument_rows(row_num, data, display='inline-block', persistence=True):
-    row = [
-        dcc.Input(
-            id=f'{row_num}-row-input-symbol',
-            type='text',
-            value='',
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '100px', 'display': display}
-        ),
-        dcc.Input(
-            id=f'{row_num}-row-input-size',
-            type='text',
-            value='',
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '100px', 'display': display}
-        ),
-        dcc.Input(
-            id=f'{row_num}-row-input-period',
-            type='text',
-            value='',
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '100px', 'display': display}
-        ),
-        dcc.Dropdown(
-            id=f'{row_num}-row-input-order-type',
-            options=[
-                {'label': 'MKT', 'value': 'MKT'},
-                {'label': 'LMT (last)', 'value': 'LMT_last'},
-                {'label': 'LMT (mid)', 'value': 'LMT_mid'},
-            ],
-            value=None,
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '100px', 'display': display},
-        ),
-        daq.BooleanSwitch(
-            id=f'{row_num}-row-input-start-stop',
-            on=False,
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '100px', 'display': display},
-        ),
-    ]
-    return row
-
+# Layout
 app.layout = html.Div([
     dcc.Store(id='session-state'),
     dcc.Store(id='tcp-port'),
@@ -254,27 +246,7 @@ app.layout = html.Div([
     html.Table([html.Tr([html.Td(c, style={'display': 'none'}) for c in instrument_rows(n, display='none')]) for n in range(0, MAX_INSTRUMENTS)]),
 ])
 
-def dynamic_rows(num_rows):
-    table = [
-        html.Tr([html.Th(c, style={'width': '150px'}) for c in ('Symbol', 'Size', 'Bar period (s)', 'Order type', 'Start/Stop')])
-    ] + [
-        html.Tr([html.Td(c, style={'width': '150px'}) for c in instrument_rows(n, persistence=False)])
-        for n in range(num_rows)
-    ]
-    return table
-
-def draw_table(data, len_table):
-    table = [
-        html.Tr([html.Th(c, style={'width': '150px'}) for c in ('Symbol', 'Size', 'Bar period (s)', 'Order type', 'Start/Stop')])
-    ] + [
-        html.Tr([html.Td(c, style={'width': '150px', 'display': 'none'}) for c in instrument_rows(n, display='none')])
-        if n >= len(data)
-        else
-        html.Tr([html.Td(c, style={'width': '150px'}) for c in instrument_rows(n, data=data[n])])
-        for n in range(len_table)
-    ]
-    return table
-
+# Callbacks
 @app.callback(
             Output('tcp-port', 'data'),
             [Input('paper-live-dropdown', 'value')],)
@@ -296,21 +268,22 @@ def update_port(value):
             + [State(f'{n}-row-input-period', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
-#def update_instruments(start_stop, add_row, clear_session_state, *state):
 def update_instruments(n_clicks, *startstop_rows):
     ctx = dash.callback_context
     start_stop = startstop_rows[:MAX_INSTRUMENTS]
     rows = startstop_rows[MAX_INSTRUMENTS:]
 
-    if ctx.triggered[0]['prop_id'] == 'add-instrument-row.n_clicks':
-        rows = rows + (True,)
-
     instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
     if '-row-input-start-stop' in ctx.triggered[0]['prop_id']:
-        i = int(ctx.triggered[0]['prop_id'][0])
+        i = int(ctx.triggered[0]['prop_id'].split('-')[0])
         instrument = rows[i]
         _instruments = {i[0]:i[1:] for i in instruments}
         trader_action.updates((instrument,) + _instruments[instrument])
+
+    rows = state_to_rows(trader_action.state, MAX_INSTRUMENTS)
+
+    if ctx.triggered[0]['prop_id'] == 'add-instrument-row.n_clicks':
+        rows = rows + (True,)
 
     return rows
 
@@ -325,18 +298,6 @@ def update_rows(data):
         instruments.append(('', '', '', None, False))
     table = draw_table(instruments, MAX_INSTRUMENTS)
     return table
-
-def get_instrument_config(state, offset):
-    # Parse raw state from update_instruments to get instrument config 
-    instruments = []
-    if state:
-        #for i in range(offset - 1, 2*offset - 1):
-        for i in range(offset):
-            if state[i]:
-                instruments.append((state[i], state[i+offset], state[i+2*offset], state[i+3*offset], state[i+4*offset]))
-    else:
-        instruments = ''
-    return instruments
 
 if __name__ == '__main__':
     app.run_server(debug=True)
