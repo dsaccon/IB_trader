@@ -201,6 +201,9 @@ class MarketDataApp(EClient, EWrapper):
             # Don't start processing data until we get the first msgs from data feed
             self._on_update()
 
+    def _run(self):
+        self.run()
+
     def _cancel_orders(self, cycle_all=True):
         # 2 methods below for canceling orders
 
@@ -434,7 +437,7 @@ def main_cli():
         objs[instr] = MarketDataApp(clientIds[i], _args)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(args.symbol)) as executor:
         for instr in args.symbol:
-            executor.submit(objs[instr].run, daemon=True)
+            executor.submit(objs[instr]._run, daemon=True)
 
 def parse_args():
     argp = argparse.ArgumentParser()
