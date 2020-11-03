@@ -86,6 +86,7 @@ class TraderAction:
             _args = self._make_args(instrument)
             self.state[instrument]['client'] = MarketDataApp(self.state[instrument]['clientId'], _args)
             if self.initial_thread:
+                self.initial_thread = False
                 # On startup, cancel any active unfilled orders account-wide
                 self.state[instrument]['client'].reqGlobalCancel()
             self.state[instrument]['thread'] = threading.Thread(target=self.state[instrument]['client']._run, daemon=True)
@@ -119,8 +120,8 @@ class TraderAction:
         args.port = self.port
         args.security_type = 'STK'
         args.symbol = instrument
-        args.order_size = int(self.state[instrument]['args'][0])
-        args.bar_period = int(self.state[instrument]['args'][1])*60
+        args.order_size = self.state[instrument]['args'][0]
+        args.bar_period = int(self.state[instrument]['args'][1]*60)
         args.order_type = self.state[instrument]['args'][2][:3]
         if self.state[instrument]['args'][2][4:] in ('last', 'mid'):
             args.quote_type = self.state[instrument]['args'][2][4:]
@@ -176,7 +177,7 @@ def instrument_rows(row_num, data=('', '', '', None, False), display='inline-blo
         ),
         dcc.Input(
             id=f'{row_num}-row-input-size',
-            type='text',
+            type='number',
             value=data[1],
             persistence_type='memory',
             persistence=persistence,
@@ -184,7 +185,7 @@ def instrument_rows(row_num, data=('', '', '', None, False), display='inline-blo
         ),
         dcc.Input(
             id=f'{row_num}-row-input-period',
-            type='text',
+            type='number',
             value=data[2],
             persistence_type='memory',
             persistence=persistence,
