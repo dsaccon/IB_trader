@@ -120,8 +120,6 @@ class MarketDataApp(EClient, EWrapper):
                 self.rtBars_reqId = random.randint(0, 999)
                 if not self.rtBars_reqId == self.mktData_reqId:
                     break
-        if not hasattr(self, 'nextorderId'):
-            self.nextorderId = 0
 
         if not self.debug_mode:
             # Connect to server and start feeds
@@ -136,6 +134,10 @@ class MarketDataApp(EClient, EWrapper):
             #self._test_setup()
             #self.reqOpenOrders()
             #breakpoint()
+
+        if not hasattr(self, 'order_id'):
+            #self.nextorderId = 0
+            self.order_id = 0 # Just a placeholder. Will get updated prior to any order, via _place_order()
 
     def error(self, reqId, errorCode, errorString):
         logging.warning(f'{codes(errorCode)}, {errorCode}, {errorString}')
@@ -156,8 +158,8 @@ class MarketDataApp(EClient, EWrapper):
 
     def nextValidId(self, orderId: int):
         super().nextValidId(orderId)
-        self.nextorderId = orderId
-        logging.info(f'The next valid order id is: {self.nextorderId}')
+        self.order_id = orderId
+        logging.info(f'The next valid order id is: {self.order_id}')
 
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
@@ -175,6 +177,11 @@ class MarketDataApp(EClient, EWrapper):
             f'openOrder id: {orderId}, {contract.symbol}, {contract.secType},'
             f'@, {contract.exchange}, {order.action}, {order.orderType},'
             f'{order.totalQuantity}, {orderState.status}')
+
+    def openOrderEnd(self):
+        """This is called at the end of a given request for open orders."""
+        super().openOrderEnd()
+        self.cancel_enable = False
 
     def execDetails(self, reqId, contract, execution):
         logging.info(
@@ -204,18 +211,16 @@ class MarketDataApp(EClient, EWrapper):
     def _run(self):
         self.run()
 
-    def _cancel_orders(self, cycle_all=True):
+    def _cancel_orders(self, cycle_all=False):
         # 2 methods below for canceling orders
 
         if cycle_all:
             # Cycle through all possible orders from this session and cancel
-            for _id in range(1, self.nextorderId + 1):
+            for _id in range(1, self.order_id + 1):
                 self.cancelOrder(_id)
         else:
             self.cancel_enable = True
-            self.reqOpenOrders()
-            time.sleep(1) # Give one second to cancel orders
-            self.cancel_enable = False
+            self.reqOpenOrders() # openOrder() will receive all open orders and do cancelOrder() there
 
     def _connect(self):
         logging.info(f'port: {self.args.port}, client_id {self.client_id}')
@@ -228,8 +233,8 @@ class MarketDataApp(EClient, EWrapper):
     def _disconnect(self):
         self.disconnect()
         while self.isConnected():
-            time.sleep(0.5)
             logging.info(f'Disconnecting from IB.. {self.args.symbol}, {self.client_id}')
+            time.sleep(0.5)
         logging.info(f'Disconnected - {self.args.symbol}, {self.client_id}')
 
     def _subscribe_mktData(self):
@@ -273,6 +278,7 @@ class MarketDataApp(EClient, EWrapper):
     def _update_candles(self):
         # Bar completed
         if self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD == self.period:
+            # Hit the candle period boundary. Update HA candles dataframe
             _pd = self._calc_new_candle()
             self.candles = self.candles.append(_pd, ignore_index=True)
             #
@@ -280,9 +286,9 @@ class MarketDataApp(EClient, EWrapper):
             bar_color_prev = None
             if self.candles.shape[0] > 1:
                 bar_color = self.candles['ha_color'].values[-1].upper()
-            else:
-                # First HA candle not yet available
-                return
+#            else:
+#                # First HA candle not yet available
+#                return
             if self.candles.shape[0] > 2:
                 bar_color_prev = self.candles['ha_color'].values[-2].upper()
             logging.info('--')
@@ -306,12 +312,15 @@ class MarketDataApp(EClient, EWrapper):
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
-            #ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+#            if self.candles.shape[0] == 1:
+#                # First HA candle
+#                #ha_o = (ohlc[0] + ohlc[3])/2
+#                #ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+#            else:
+#                ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
+            ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
             ha_h = max(ohlc[1], ha_o, ha_c)
-            #ha_h = max(ohlc)
             ha_l = min(ohlc[2], ha_o, ha_c)
-            #ha_l = min(ohlc)
             ha_color = 'Red' if self.candles['ha_close'].values[-1] > ha_c else 'Green'
             ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         else:
@@ -374,12 +383,14 @@ class MarketDataApp(EClient, EWrapper):
     def _place_order(self, side, order_obj=None):
         if not order_obj:
             order_obj = self._create_order_obj(side)
+        _order_id = self.order_id
+        self.reqIds(1) # Initiate update to self.order_id, will be done in nextValidId()
+        if _order_id == self.order_id:
+            time.sleep(2.0) # Give time for self.order_id to update
+        order_obj.order_id = self.order_id
+        order_obj.timestamp = dt.datetime.now().timestamp()
         logging.warning(f'Order: {self.args.symbol}, {order_obj.action}, {order_obj.orderType}, {order_obj.totalQuantity}, {order_obj.lmtPrice}')
-        _ts = dt.datetime.now().timestamp()
-        self.placeOrder(self.nextorderId, self.contract, order_obj)
-        order_obj.timestamp = _ts
-        order_obj.order_id = self.nextorderId
-        self.nextorderId += 1
+        self.placeOrder(self.order_id, self.contract, order_obj)
         return order_obj
 
     def _check_ORH(self):
@@ -412,7 +423,8 @@ class MarketDataApp(EClient, EWrapper):
                 price = round((self.best_bid + self.best_ask)/2, 2)
             elif self.args.quote_type == 'last':
                 price = self.last
-        order.lmtPrice = price
+
+        #order.lmtPrice = price
         return order
 
     def _create_contract_obj(self):
