@@ -39,17 +39,21 @@ class ApplicationLogicError(Exception):
 
 # Object used for interacting with IB_trader
 class TraderAction:
+    order_id_offset = 1000
     def __init__(self, loglevel):
         self.loglevel = loglevel
         self.state = {}
         self.port = None # 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper
         self.initial_thread = True # After first thread starts, set to False
+        self.next_order_id_start = 0
 
     def updates(self, instrument):
         if not self.state.get(instrument[0]):
             # First time start up for this instrument/symbol
             self.state[instrument[0]] = {}
             self.state[instrument[0]]['args'] = instrument[1:]
+            self.state[instrument[0]]['order_id_start'] = self.next_order_id_start
+            self.next_order_id_start += TraderAction.order_id_offset
             self.state[instrument[0]]['clientId'] = self._get_new_clientId()
             self._start(instrument[0])
             return
@@ -69,22 +73,15 @@ class TraderAction:
         return _id
 
     def _start(self, instrument):
-#        if not self.port:
-#            # Handling for edge case, when restart script but previous browser state has row data, triggering callback
-#            return
-
         if self.state[instrument].get('thread') and self.state[instrument]['thread'].is_alive:
             # Reconnect. Re-init MarketDataApp() obj to reconnect in existing thread
-            #if self.state[instrument]['thread'].is_alive:
-            #    logging.info(f"WEB: Previous thread for {instrument}, {self.state[instrument]['clientId']} is still up")
-            #    raise ApplicationLogicError
             _args = self._make_args(instrument)
-            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args)
+            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args, start_order_id=self.next_order_id_start)
             self.state[instrument]['client']._run()
         else:
             # First time connecting. Start new thread and init MarketDataApp() obj
             _args = self._make_args(instrument)
-            self.state[instrument]['client'] = MarketDataApp(self.state[instrument]['clientId'], _args)
+            self.state[instrument]['client'] = MarketDataApp(self.state[instrument]['clientId'], _args, start_order_id=self.next_order_id_start)
             if self.initial_thread:
                 self.initial_thread = False
                 # On startup, cancel any active unfilled orders account-wide
@@ -224,19 +221,42 @@ app.layout = html.Div([
         }
     ),
     html.Div([
-	dcc.Dropdown(
-	    id='paper-live-dropdown',
-	    options=[
-		{'label': 'Live', 'value': 'live'},
-		{'label': 'Paper', 'value': 'paper'},
-	    ],
-            placeholder="Account Type",
-	    value='paper',
-            clearable=False,
-            persistence=False,
-            style={'width': '35%'}
-	),
-    ]),
+        html.Label(
+            [
+                "Account type",
+                dcc.Dropdown(
+                    id='paper-live-dropdown',
+                    options=[
+                        {'label': 'Live', 'value': 'live'},
+                        {'label': 'Paper', 'value': 'paper'},
+                    ],
+                    placeholder="Account Type",
+                    value='paper',
+                    clearable=False,
+                    persistence=False,
+                    style={'width': '120px'}
+                ),
+            ], style={'width': '150px', 'display': 'inline-block'},
+        ),
+
+        html.Label(
+            [
+                "Connection type",
+                dcc.Dropdown(
+                    id='connection-type',
+                    options=[
+                        {'label': 'Gateway', 'value': 'gateway'},
+                        {'label': 'TWS', 'value': 'tws'},
+                    ],
+                    placeholder="Connection type",
+                    value='gateway',
+                    clearable=False,
+                    persistence=False,
+                    style={'width': '120px'}
+                ),
+            ], style={'width': '150px', 'display': 'inline-block'},
+        ),
+    ], style={'width': '70%'}),
     html.Br(),
     html.Br(),
     html.Table(id='rows-content'),
@@ -250,11 +270,19 @@ app.layout = html.Div([
 # Callbacks
 @app.callback(
             Output('tcp-port', 'data'),
-            [Input('paper-live-dropdown', 'value')],)
-def update_port(value):
-    if value == 'paper':
-        _val = 4002
-    elif value == 'live':
+            [Input('paper-live-dropdown', 'value'),
+            Input('connection-type', 'value')],)
+def update_port(paper_live, connection_type):
+    if paper_live == 'paper':
+        if connection_type == 'gateway':
+            _val = 4002
+        elif connection_type == 'tws':
+            _val = 7497
+    elif paper_live == 'live':
+        if connection_type == 'gateway':
+            _val = 4001
+        elif connection_type == 'tws':
+            _val = 7496
         _val = 4001
     else:
         raise ValueError
@@ -301,4 +329,8 @@ def update_rows(data):
     return table
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    try:
+        app.run_server(debug=True)
+    except:
+        for instrument in trader_action.state:
+            trader_action.state[instrument]['client']._disconnect()
