@@ -46,9 +46,11 @@ def codes(code):
 
 class MarketDataApp(EClient, EWrapper):
     RT_BAR_PERIOD = 5
-    def __init__(self, client_id, args):
+    def __init__(self, client_id, args, start_order_id=None):
         EClient.__init__(self, self)
+        self.client_id = client_id
         self.args = args
+        self.start_order_id = start_order_id
 
         self.debug_mode = False
         if args.debug:
@@ -79,7 +81,6 @@ class MarketDataApp(EClient, EWrapper):
         if not os.path.exists(self.logfile_orders):
             self._write_csv_row((logfile_orders_rows,), self.logfile_orders, newfile=True)
 
-        self.client_id = client_id
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
         self.period = args.bar_period
         self.order_type = args.order_type
@@ -136,8 +137,11 @@ class MarketDataApp(EClient, EWrapper):
             #breakpoint()
 
         if not hasattr(self, 'order_id'):
-            #self.nextorderId = 0
-            self.order_id = 0 # Just a placeholder. Will get updated prior to any order, via _place_order()
+            # Allow for obj to re __init__() and not reset self.order_id
+            if self.start_order_id is not None:
+                self.order_id = self.start_order_id
+            else:
+                self.order_id = 0 # Placeholder. Will get updated prior to any order, via _place_order()
 
     def error(self, reqId, errorCode, errorString):
         logging.warning(f'{codes(errorCode)}, {errorCode}, {errorString}')
@@ -158,8 +162,8 @@ class MarketDataApp(EClient, EWrapper):
 
     def nextValidId(self, orderId: int):
         super().nextValidId(orderId)
-        self.order_id = orderId
-        logging.info(f'The next valid order id is: {self.order_id}')
+        #self.order_id = orderId
+        #logging.info(f'The next valid order id is: {self.order_id}')
 
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
@@ -374,7 +378,7 @@ class MarketDataApp(EClient, EWrapper):
         self._create_test_order()
 
     def _create_test_order(self, side='Buy'):
-        # Creates a LMT order with a price far away from mid. For testing order cancel
+        # Easy way to tweak order obj params to create contrived test orders
         obj = self._create_order_obj(side)
         obj.orderType = 'LMT'
         obj.lmtPrice = round(0.01 + random.randint(1,100)/100, 2)
@@ -383,15 +387,20 @@ class MarketDataApp(EClient, EWrapper):
     def _place_order(self, side, order_obj=None):
         if not order_obj:
             order_obj = self._create_order_obj(side)
-        _order_id = self.order_id
-        self.reqIds(1) # Initiate update to self.order_id, will be done in nextValidId()
-        if _order_id == self.order_id:
-            time.sleep(2.0) # Give time for self.order_id to update
-        order_obj.order_id = self.order_id
-        order_obj.timestamp = dt.datetime.now().timestamp()
-        logging.warning(f'Order: {self.args.symbol}, {order_obj.action}, {order_obj.orderType}, {order_obj.totalQuantity}, {order_obj.lmtPrice}')
-        self.placeOrder(self.order_id, self.contract, order_obj)
+        logging.warning(f'Order: {order_obj.order_id}, {self.contract.symbol}, {order_obj.action}, {order_obj.orderType}, {order_obj.totalQuantity}, {order_obj.lmtPrice}')
+        self.placeOrder(order_obj.order_id, self.contract, order_obj)
         return order_obj
+
+    def _update_order_id(self):
+        # The proper way to do this is call self.reqIds(), but have seen issues here
+        # Use manual option for now
+        if self.start_order_id is not None:
+            self.order_id += 1
+        else:
+            _order_id = self.order_id
+            self.reqIds(1) # Initiate update to self.order_id, will be done in nextValidId()
+            if _order_id == self.order_id:
+                time.sleep(5.0) # Give time for self.order_id to update
 
     def _check_ORH(self):
         # return True if outside regular hours, else False
@@ -423,8 +432,11 @@ class MarketDataApp(EClient, EWrapper):
                 price = round((self.best_bid + self.best_ask)/2, 2)
             elif self.args.quote_type == 'last':
                 price = self.last
-
-        #order.lmtPrice = price
+        order.lmtPrice = price
+        #
+        self._update_order_id()
+        order.order_id = self.order_id
+        order.timestamp = dt.datetime.now().timestamp()
         return order
 
     def _create_contract_obj(self):
