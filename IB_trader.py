@@ -132,7 +132,7 @@ class MarketDataApp(EClient, EWrapper):
         if not self.debug_mode:
             # Connect to server and start feeds
             self._connect()
-            self._cancel_orders(cycle_all=False)
+            self._cancel_orders()
             self._subscribe_mktData()
             self._subscribe_rtBars()
         else:
@@ -229,7 +229,7 @@ class MarketDataApp(EClient, EWrapper):
     def _run(self):
         self.run()
 
-    def _cancel_orders(self, cycle_all=True):
+    def _cancel_orders(self, cycle_all=False):
         # 2 methods below for canceling orders
 
         if cycle_all:
