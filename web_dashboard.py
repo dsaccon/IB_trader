@@ -1,3 +1,5 @@
+#!/usr/local/bin/python3
+
 # -*- coding: utf-8 -*-
 import time
 import random
@@ -24,10 +26,11 @@ argp.add_argument(
 )
 args = argp.parse_args()
 
+logfile = 'logs/IB_trader.log'
 if args.loglevel == 'info':
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(filename=logfile, level=logging.INFO)
 elif args.loglevel == 'warning':
-    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(filename=logfile, level=logging.WARNING)
 else:
     raise ValueError
 
@@ -46,6 +49,7 @@ class TraderAction:
         self.port = None # 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper
         self.initial_thread = True # After first thread starts, set to False
         self.next_order_id_start = 0
+        self.logger = logging.getLogger()
 
     def updates(self, instrument):
         if not self.state.get(instrument[0]):
@@ -73,10 +77,11 @@ class TraderAction:
         return _id
 
     def _start(self, instrument):
+        self.logger.warning(f"Connecting - {instrument}, {self.state[instrument]['clientId']}")
         if self.state[instrument].get('thread') and self.state[instrument]['thread'].is_alive:
             # Reconnect. Re-init MarketDataApp() obj to reconnect in existing thread
             _args = self._make_args(instrument)
-            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args, start_order_id=self.next_order_id_start)
+            self.state[instrument]['client'].__init__(self.state[instrument]['clientId'], _args, start_order_id=0)
             self.state[instrument]['client']._run()
         else:
             # First time connecting. Start new thread and init MarketDataApp() obj
@@ -95,6 +100,8 @@ class TraderAction:
 
         # First do a disconnect with the server
         self.state[instrument]['client']._disconnect()
+
+        self.logger.warning(f"Disconnected - {instrument}, {self.state[instrument]['clientId']}")
         
         if stop_thread:
             # Stop thread
@@ -103,9 +110,9 @@ class TraderAction:
                 if not self.state[instrument]['thread'].is_alive:
                     break
                 else:
-                    logging.info(f'WEB: Waiting for thread to stop: {instrument}')
+                    self.logger.info(f'WEB: Waiting for thread to stop: {instrument}')
                     time.sleep(0.5)
-            logging.info(f'WEB: Thread stopped: {instrument}')
+            self.logger.warning(f'WEB: Thread stopped: {instrument}')
 
 
     def _make_args(self, instrument):
@@ -329,8 +336,4 @@ def update_rows(data):
     return table
 
 if __name__ == '__main__':
-    try:
-        app.run_server(debug=True)
-    except:
-        for instrument in trader_action.state:
-            trader_action.state[instrument]['client']._disconnect()
+    app.run_server(debug=True)
