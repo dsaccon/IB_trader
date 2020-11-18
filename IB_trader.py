@@ -218,9 +218,9 @@ class MarketDataApp(EClient, EWrapper):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         self._tohlc = (time, open_, high, low, close)
         self.logger.info('--')
-        self.logger.info(
-            f'RealTimeBar. TickerId: {reqId},'
-            f'{dt.datetime.fromtimestamp(time)}, -1,'
+        self.logger.warning(
+            f'RealTimeBar. TickerId: {reqId}, {self.args.symbol}, '
+            f'{dt.datetime.fromtimestamp(time)}, OHLC: '
             f'{self._tohlc[1:]}, {volume}, {wap}, {count}')
         #
         if self.last and self.best_bid and self.best_ask:
@@ -280,7 +280,8 @@ class MarketDataApp(EClient, EWrapper):
     def _check_period(self):
         # Return True if period ends at this update, else False
         _time = dt.datetime.fromtimestamp(self._tohlc[0])
-        total_secs = _time.hour*3600 + _time.minute*60 + _time.second
+        # Add bar period below becoz ts received from IB represents beginning of bar
+        total_secs = _time.hour*3600 + _time.minute*60 + _time.second + self.RT_BAR_PERIOD
         if total_secs % self.period == 0:
             return True
         return False
@@ -296,7 +297,7 @@ class MarketDataApp(EClient, EWrapper):
 
     def _update_candles(self):
         # Bar completed
-        if self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD == self.period:
+        if self.cache[-1][0] + self.RT_BAR_PERIOD - self.cache[0][0] == self.period:
             # Hit the candle period boundary. Update HA candles dataframe
             _pd = self._calc_new_candle()
             self.candles = self.candles.append(_pd, ignore_index=True)
@@ -310,12 +311,11 @@ class MarketDataApp(EClient, EWrapper):
 #                return
             if self.candles.shape[0] > 2:
                 bar_color_prev = self.candles['ha_color'].values[-2].upper()
-            self.logger.info('--')
             self.logger.warning(f'Candle: {self.cache[-1][0]}, {self.args.symbol} - {bar_color}, Prev: {bar_color_prev}')
             csv_row = [col[1] for col in _pd.items()]
             csv_row.insert(1, self.args.symbol)
             self._write_csv_row((csv_row,), self.logfile_candles)
-        elif self.cache[-1][0] - self.cache[0][0] + self.RT_BAR_PERIOD < self.period:
+        elif self.cache[-1][0] + self.RT_BAR_PERIOD - self.cache[0][0] < self.period:
             # First iteration. Not enough updates for a full period
             self.logger.info('Not enough data for a candle')
         else:
