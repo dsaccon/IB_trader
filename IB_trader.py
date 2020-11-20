@@ -203,7 +203,7 @@ class MarketDataApp(EClient, EWrapper):
         self.cancel_enable = False
 
     def execDetails(self, reqId, contract, execution):
-        self.logger.info(
+        self.logger.warning(
             f'Order Executed: {reqId}, {contract.symbol},'
             f'{contract.secType}, {contract.currency}, {execution.execId},'
             f'{execution.orderId}, {execution.shares}, {execution.lastLiquidity}')
@@ -217,7 +217,6 @@ class MarketDataApp(EClient, EWrapper):
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         self._tohlc = (time, open_, high, low, close)
-        self.logger.info('--')
         self.logger.warning(
             f'RealTimeBar. TickerId: {reqId}, {self.args.symbol}, '
             f'{dt.datetime.fromtimestamp(time)}, OHLC: '
@@ -328,9 +327,10 @@ class MarketDataApp(EClient, EWrapper):
             min([u[3] for u in self.cache]),
             self.cache[-1][4]
         )
+        ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
-            ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
+#            ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
             if self.candle_calc_use_prev_ha:
                 if self.candles.shape[0] == 1:
                     # No prior HA candle is available, use prev raw candle open/close
@@ -341,10 +341,16 @@ class MarketDataApp(EClient, EWrapper):
                 ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
             ha_h = max(ohlc[1], ha_o, ha_c)
             ha_l = min(ohlc[2], ha_o, ha_c)
-            ha_color = 'Red' if self.candles['ha_close'].values[-1] > ha_c else 'Green'
+            if ha_c > ha_o:
+                ha_color = 'Green'
+            elif ha_c < ha_o:
+                ha_color = 'Red'
+            else:
+                # Indecision candle
+                ha_color = None
             ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         else:
-            ha_ochl = (None, None, None, None, None)
+            ha_ochl = (None, ha_c, None, None, None)
         _pd = {
             'time': self._tohlc[0] ,
             'open': ohlc[0],
@@ -365,7 +371,7 @@ class MarketDataApp(EClient, EWrapper):
 
     def _check_order_conditions(self):
         if not isinstance(self.candles['ha_color'].values[-1], str):
-            # Skip if first HA candle not yet available
+            # Skip if first HA candle not yet available, or this is an indecision candle
             return
         #
         _side = 'Buy'
