@@ -95,6 +95,7 @@ class MarketDataApp(EClient, EWrapper):
         self.candle_calc_use_prev_ha = True
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
         self.RT_BAR_DATA_TYPE = 'MIDPOINT' # MIDPOINT/TRADES/BID/ASK
+        self.HISTORICAL_BAR_DATA_TYPE = 'MIDPOINT' # MIDPOINT/TRADES/BID/ASK
         self.period = args.bar_period
         self.order_type = args.order_type
         self.order_size = args.order_size
@@ -123,6 +124,7 @@ class MarketDataApp(EClient, EWrapper):
         self.cancel_enable = False
 
         self.contract = self._create_contract_obj()
+        self.contract_details = None
 
         #
         if not hasattr(self, 'mktData_reqId'):
@@ -134,6 +136,12 @@ class MarketDataApp(EClient, EWrapper):
                 self.rtBars_reqId = random.randint(0, 999)
                 if not self.rtBars_reqId == self.mktData_reqId:
                     break
+        if not hasattr(self, 'historicalData_reqId'):
+            # First time init of object
+            while True:
+                self.historicalData_reqId = random.randint(0, 999)
+                if not self.historicalData_reqId in (self.mktData_reqId, self.mktData_reqId):
+                    break
 
         if not self.debug_mode:
             # Connect to server and start feeds
@@ -143,10 +151,8 @@ class MarketDataApp(EClient, EWrapper):
             self._subscribe_rtBars()
         else:
             # Run test setup here
-            pass
-            #self._connect()
-            #self._test_setup()
-            #self.reqOpenOrders()
+            self._connect()
+            self._test_setup()
 
         if not hasattr(self, 'order_id'):
             # Allow for obj to re __init__() and not reset self.order_id
@@ -218,6 +224,14 @@ class MarketDataApp(EClient, EWrapper):
             f'HistoricalData: {reqId}, Date: {bar.date},'
             f'Open: {bar.open}, High: {bar.high},'
             f'Low: {bar.low}, Close: {bar.close}')
+        print(
+            f'HistoricalData: {reqId}, Date: {bar.date},'
+            f'Open: {bar.open}, High: {bar.high},'
+            f'Low: {bar.low}, Close: {bar.close}')
+
+    def position(self, account:str, contract:Contract, position:float, avgCost:float):
+        print(f'account: {account}, contract: {contract}, position: {position}, avgCost: {avgCost}')
+        pass ### tmp
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
@@ -269,6 +283,22 @@ class MarketDataApp(EClient, EWrapper):
             self.contract,
             self.RT_BAR_PERIOD,
             self.RT_BAR_DATA_TYPE, False, [])
+
+    def _get_historical_data(self):
+        self.reqHistoricalData(
+            self.historicalData_reqId,
+            self.contract,
+            '',
+            '1 M',
+            '1 min',
+            self.HISTORICAL_BAR_DATA_TYPE,
+            0,
+            1,
+            True,
+            [])
+
+    def _get_positions(self): ### tmp
+        self.reqPositions()
 
     def _on_update(self):
         # Process 5s updates as received
@@ -402,11 +432,16 @@ class MarketDataApp(EClient, EWrapper):
 
     def _test_setup(self):
         # Sandbox to set up test env
-        self._create_test_order()
-        self._create_test_order()
-        self._create_test_order()
-        self._create_test_order()
-        self._create_test_order()
+
+        #self.reqOpenOrders()
+        self._get_historical_data()
+#        self._get_positions() ### tmp
+#        self._get_contract_details(random.randint(0,9999), self.contract)
+#        self._create_test_order()
+#        self._create_test_order()
+#        self._create_test_order()
+#        self._create_test_order()
+#        self._create_test_order()
 
     def _create_test_order(self, side='Buy'):
         # Easy way to tweak order obj params to create contrived test orders
@@ -414,6 +449,18 @@ class MarketDataApp(EClient, EWrapper):
         obj.orderType = 'LMT'
         obj.lmtPrice = round(0.01 + random.randint(1,100)/100, 2)
         self._place_order('Buy', order_obj=obj)
+
+    def _get_contract_details(self, reqId, contract):
+        self.reqContractDetails(reqId, contract)
+        #Error checking loop - breaks from loop once contract details are obtained
+#        for err_check in range(50):
+#            if not self.contract_details[reqId]:
+#                time.sleep(0.1)
+#            else:
+#                break
+        #Raise if error checking loop count maxed out (contract details not obtained)
+#        if err_check == 49:
+#            raise Exception('error getting contract details')
 
     def _place_order(self, side, order_obj=None):
         if not order_obj:
