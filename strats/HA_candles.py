@@ -67,6 +67,7 @@ class IBTrader(EClient, EWrapper):
 
     def __init__(self, client_id, args, start_order_id=None):
         EClient.__init__(self, self)
+        self.start_time = dt.datetime.now().timestamp()
         self.client_id = client_id
         self.args = args
         self.start_order_id = start_order_id
@@ -146,13 +147,13 @@ class IBTrader(EClient, EWrapper):
             self._write_csv_row((logfile_candles_rows,), self.logfile_candles, newfile=True)
         else:
             self._write_csv_row(
-                (['' for _ in logfile_candles_rows],),
+                ([self.start_time, '', self.args.symbol] + ['' for _ in logfile_candles_rows][3:],),
                 self.logfile_candles)
         if not os.path.exists(self.logfile_orders):
             self._write_csv_row((logfile_orders_rows,), self.logfile_orders, newfile=True)
         else:
             self._write_csv_row(
-                (['' for _ in logfile_orders_rows],),
+                ([self.start_time, '', self.args.symbol] + ['' for _ in logfile_orders_rows][3:],),
                 self.logfile_orders,)
 
     def _cancel_orders(self, cycle_all=False):
@@ -209,19 +210,6 @@ class IBTrader(EClient, EWrapper):
             rth,
             time_format,
             streaming,
-            [])
-
-    def _gget_historical_data(self):
-        self.reqHistoricalData(
-            self.historicalData_reqId,
-            self.contract,
-            '',
-            '1 M',
-            '1 min',
-            self.HISTORICAL_BAR_DATA_TYPE,
-            1,
-            1,
-            True,
             [])
 
     def _get_positions(self): ### tmp
@@ -389,23 +377,14 @@ class IBTrader(EClient, EWrapper):
             f'HistoricalData: {reqId}, Date: {bar.date},'
             f'Open: {bar.open}, High: {bar.high},'
             f'Low: {bar.low}, Close: {bar.close}')
-#        print(
-#            f'HistoricalData: {reqId}, Date: {bar.date},'
-#            f'Open: {bar.open}, High: {bar.high},'
-#            f'Low: {bar.low}, Close: {bar.close}')
 
     def historicalDataUpdate(self, reqId, bar):
         self.logger.info(
             f'HistoricalDataUpdate: {reqId}, Date: {bar.date},'
             f'Open: {bar.open}, High: {bar.high},'
             f'Low: {bar.low}, Close: {bar.close}')
-#        print(
-#            f'HistoricalDataUpdate: {reqId}, Date: {bar.date},'
-#            f'Open: {bar.open}, High: {bar.high},'
-#            f'Low: {bar.low}, Close: {bar.close}')
 
     def position(self, account:str, contract:Contract, position:float, avgCost:float):
-#        print(f'account: {account}, contract: {contract}, position: {position}, avgCost: {avgCost}')
         self.logger.info(
             f'account: {account}',
             f'contract: {contract}',
@@ -476,23 +455,6 @@ class HACandles(IBTrader):
         self.contract = self._create_contract_obj()
         self.contract_details = None
 
-#        #
-#        if not hasattr(self, 'mktData_reqId'):
-#            # First time init of object
-#            self.mktData_reqId = random.randint(0, 999)
-#        if not hasattr(self, 'rtBars_reqId'):
-#            # First time init of object
-#            while True:
-#                self.rtBars_reqId = random.randint(0, 999)
-#                if not self.rtBars_reqId == self.mktData_reqId:
-#                    break
-#        if not hasattr(self, 'historicalData_reqId'):
-#            # First time init of object
-#            while True:
-#                self.historicalData_reqId = random.randint(0, 999)
-#                if not self.historicalData_reqId in (self.mktData_reqId, self.mktData_reqId):
-#                    break
-
         if not self.debug_mode:
             # Connect to server and start feeds
             self._connect()
@@ -504,24 +466,8 @@ class HACandles(IBTrader):
             self._connect()
             self._test_setup()
 
-#        if not hasattr(self, 'order_id'):
-#            # Allow for obj to re __init__() and not reset self.order_id
-#            if self.start_order_id is not None:
-#                self.order_id = self.start_order_id
-#            else:
-#                self._update_order_id()
-#                #self.order_id = 0 # Placeholder. Will get updated prior to any order, via _place_order()
-#        else:
-#            pass
-#            #self._update_order_id()
-
 
     ### Internal utility functions
-
-#    def _setup_csv_logs(self):
-#        logfile_candles_rows = ('time', 'symbol') + tuple([c for c in self.candles.columns[1:]])
-#        logfile_orders_rows = ('time', 'order_id', 'symbol', 'side', 'order_type', 'size', 'price')
-#        super()._setup_csv_logs(logfile_candles_rows, logfile_orders_rows)
 
 
     ### Modified EClient/EWrapper functions
@@ -855,7 +801,6 @@ def main_cli(args):
     for i, instr in enumerate(args.symbol):
         _args = copy.deepcopy(args)
         _args.symbol = instr
-#        objs[instr] = MarketDataApp(clientIds[i], _args, start_order_id=1000*i)
         objs[instr] = cls(clientIds[i], _args, start_order_id=1000*i)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(args.symbol)) as executor:
         futures = []
@@ -867,37 +812,48 @@ def parse_args():
     argp = argparse.ArgumentParser()
     argp.add_argument("symbol", type=str, default=None, nargs='+')
     argp.add_argument(
-        "-l", "--loglevel", type=str, default='warning', help="Logging options: debug/info/warning"
+        "-l", "--loglevel", type=str, default='warning',
+        help="Logging options: debug/info/warning"
     )
     argp.add_argument(
-        "-d", "--debug", action='store_const', const=True, default=False, help="Run in debug mode. IBTrader will init but not start feeds. And open up a debugger"
+        "-d", "--debug", action='store_const', const=True, default=False,
+        help="Run in debug mode. IBTrader will init but not start feeds. And open up a debugger"
     )
     argp.add_argument(
-        "--strategy", type=str, default='HACandles', help="Strategy name ('HACandles', 'EmaLrcCrossover')"
+        "--strategy", type=str, default='HACandles',
+        help="Strategy name ('HACandles', 'EmaLrcCrossover')"
     )
     argp.add_argument(
-        "-p", "--port", type=int, default=4002, help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
+        "-p", "--port", type=int, default=4002,
+        help="local port for connection: 7496/7497 for TWS prod/paper, 4001/4002 for Gateway prod/paper"
     )
     argp.add_argument(
-        "-c", "--currency", type=str, default="USD", help="currency for symbols"
+        "-c", "--currency", type=str, default="USD",
+        help="currency for symbols"
     )
     argp.add_argument(
-        "-e", "--exchange", type=str, default="SMART", help="exchange for symbols"
+        "-e", "--exchange", type=str, default="SMART",
+        help="exchange for symbols"
     )
     argp.add_argument(
-        "-t", "--security-type", type=str, default="STK", help="security type for symbols"
+        "-t", "--security-type", type=str, default="STK",
+        help="security type for symbols"
     )
     argp.add_argument(
-        "-b", "--bar-period", type=str, default='1m', help="bar time period (suffix as 's', 'm', 'h', 'd', 'w')"
+        "-b", "--bar-period", type=str, default='1m',
+        help="bar time period (suffix as 's', 'm', 'h', 'd', 'w')"
     )
     argp.add_argument(
-        "-s", "--order-size", type=int, default=100, help="Order size"
+        "-s", "--order-size", type=int, default=100,
+        help="Order size"
     )
     argp.add_argument(
-        "-o", "--order-type", type=str, default='MKT', help="Order type (MKT/LMT)"
+        "-o", "--order-type", type=str, default='MKT',
+        help="Order type (MKT/LMT)"
     )
     argp.add_argument(
-        "-q", "--quote-type", type=str, default='last', help="Quote type (mid/last). Only used with LMT order type"
+        "-q", "--quote-type", type=str, default='last',
+        help="Quote type (mid/last). Only used with LMT order type"
     )
 
     args = argp.parse_args()
