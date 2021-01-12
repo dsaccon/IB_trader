@@ -26,8 +26,7 @@ cp app.py dist/tmp/.
 cp web/__init__.py dist/tmp/web/.
 cp web/backtesting.py dist/tmp/web/.
 cp web/dash_helper.py dist/tmp/web/.
-cp web/live_ema_lrc.py dist/tmp/web/.
-cp web/live_ha.py dist/tmp/web/.
+cp web/live.py dist/tmp/web/.
 cp web/live_helper.py dist/tmp/web/.
 cp strats/__init__.py dist/tmp/strats/.
 cp strats/HA_candles.py dist/tmp/strats/.
