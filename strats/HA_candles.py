@@ -100,6 +100,7 @@ class IBTrader(EClient, EWrapper):
             self.period = int(args.bar_period[:-1])*60*60*24*7
         self.order_type = args.order_type
         self.order_size = args.order_size
+        self.first_order = True # Set to False after first order
 
         #
         if not hasattr(self, 'mktData_reqId'):
@@ -443,7 +444,6 @@ class HACandles(IBTrader):
         self.HISTORICAL_BAR_DATA_TYPE = 'MIDPOINT' # MIDPOINT/TRADES/BID/ASK
         self.cache = []
         self._tohlc = tuple() # Real-time 5s update data from IB
-        self.first_order = True # Set to False after first order
 
         #
         self.best_bid = None
@@ -763,6 +763,10 @@ class EmaLrcCrossover(IBTrader):
                 return
 
             order_obj = self._place_order(_side)
+
+            if self.first_order:
+                self.first_order = False
+                self.order_size *= 2
 
             # Write order to csv
             pr = order_obj.lmtPrice if order_obj.orderType == 'LMT' else None
