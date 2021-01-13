@@ -754,11 +754,9 @@ class EmaLrcCrossover(IBTrader):
             if row['lrc'] > row['ema'] and not row['lrc_prev'] > row['ema_prev']:
                 # Crossover. Send Buy order
                 _side = 'Buy'
-                #self._place_order('Buy')
             elif row['lrc'] < row['ema'] and not row['lrc_prev'] < row['ema_prev']:
                 # Crossover. Send Sell order
                 _side = 'Sell'
-                #self._place_order('Sell')
             else:
                 return
 
