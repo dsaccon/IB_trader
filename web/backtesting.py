@@ -83,8 +83,7 @@ layout = html.Div([
                         {'label': '1week', 'value': '1w'},
                         {'label': '1month', 'value': '1mo'},
                     ],
-                    placeholder="Bar size",
-                    value='1min',
+                    placeholder="1min",
                     clearable=False,
                     persistence=False,
                     style={'width': '100px'}
@@ -165,6 +164,7 @@ layout = html.Div([
 def callbacks(strategy_name, symbol_name, bar_size, ema_period, lrc_period, interval_start, start_backtest):
     ema_period = ema_period if ema_period else 30
     lrc_period = lrc_period if lrc_period else 14
+    bar_size = bar_size if bar_size else '1m'
     ema_lrc_periods = [ema_period, lrc_period]
 
     ctx = dash.callback_context
