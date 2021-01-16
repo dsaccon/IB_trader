@@ -19,8 +19,10 @@ Helper functions and object for interacting with strategy code
 class Object(object):
     pass
 
+
 class ApplicationLogicError(Exception):
     pass
+
 
 # Object used for interacting with IB_trader
 class TraderAction:
@@ -104,8 +106,7 @@ class TraderAction:
         self.logger.warning(f"Disconnected - {instrument}, {self.state[instrument]['clientId']}")
         
         if stop_thread:
-            # Stop thread
-            # ... not implemented
+            # Not implemented
             while True:
                 if not self.state[instrument]['thread'].is_alive:
                     break
@@ -131,6 +132,7 @@ class TraderAction:
         args.ema_periods = self.state[instrument]['args'][3]
         args.lrc_periods = self.state[instrument]['args'][4]
         args.order_type = self.state[instrument]['args'][5][:3]
+        args.inter_day = self.state[instrument]['args'][6]
         if self.state[instrument]['args'][5][4:] in ('last', 'mid'):
             args.quote_type = self.state[instrument]['args'][5][4:]
         else:
@@ -138,16 +140,13 @@ class TraderAction:
         return args
 
 # Utility functions
-def draw_table(data, len_table, strategy_name='HACandles'):
-#    if strategy_name == 'HACandles':
-#        cols = ('Symbol', 'Size', 'Bar period (s)', 'Order type', 'Start/Stop')
-#    elif strategy_name == 'EMALRCCrossover':
-#        cols = ('Symbol', 'Size', 'Bar period', 'EMA periods', 'LRC periods', 'Order type', 'Start/Stop')
-    #cols = ('Symbol', 'Strategy', 'Size', 'Bar period', 'EMA periods', 'LRC periods', 'Order type', 'Start/Stop')
-    cols = ('Symbol', 'Strategy', 'Size', 'Period (m)', 'EMA periods', 'LRC periods', 'Order type', 'Start/Stop')
+def draw_table(data, len_table):
+    cols = (
+        'Symbol', 'Strategy', 'Size', 'Period (m)', 'EMA periods',
+        'LRC periods', 'Order type', 'Inter-day', 'Start/Stop')
     table = [
         html.Tr([
-            html.Th(c, style={'width': '80px', 'font-weight': 'normal'})
+            html.Th(c, style={'width': '80px', 'font-weight': 'normal', 'font-size': 13})
             for c in cols
         ])
     ] + [
@@ -178,13 +177,19 @@ def get_instrument_config(state, offset):
                     state[i+4*offset],
                     state[i+5*offset],
                     state[i+6*offset],
-                    state[i+7*offset]))
+                    state[i+7*offset],
+                    state[i+8*offset]))
     else:
         instruments = ''
     return instruments
 
 def state_to_rows(state, offset):
-    rows = [None for _ in range(offset)] + ['' for _ in range(5*offset)] + [None for _ in range(offset)] + [False for _ in range(offset)]
+    rows = (
+        [None for _ in range(offset)]
+        + ['' for _ in range(5*offset)]
+        + [None for _ in range(offset)]
+        + [None for _ in range(offset)]
+        + [False for _ in range(offset)])
     for i, instrument in enumerate(state):
         rows[i] = instrument
         rows[i + offset] = state[instrument]['args'][0]
@@ -194,6 +199,7 @@ def state_to_rows(state, offset):
         rows[i + 5*offset] = state[instrument]['args'][4]
         rows[i + 6*offset] = state[instrument]['args'][5]
         rows[i + 7*offset] = state[instrument]['args'][6]
+        rows[i + 8*offset] = state[instrument]['args'][7]
     return tuple(rows)
 
 def instrument_rows(
@@ -202,11 +208,12 @@ def instrument_rows(
         display='inline-block',
         persistence=False):
     if data is None:
-        data=('', None, '', '', '', '', None, False)
+        data=('', None, '', '', '', '', None, None, False)
     row = [
         dcc.Input(
             id=f'{row_num}-row-input-symbol',
             type='text',
+            placeholder="AAPL",
             value=data[0],
             persistence_type='memory',
             persistence=persistence,
@@ -218,6 +225,7 @@ def instrument_rows(
                 {'label': 'HA', 'value': 'HACandles'},
                 {'label': 'EMA-LRC', 'value': 'EmaLrcCrossover'},
             ],
+            placeholder="HA",
             value=data[1],
             persistence_type='memory',
             persistence=persistence,
@@ -226,6 +234,7 @@ def instrument_rows(
         dcc.Input(
             id=f'{row_num}-row-input-size',
             type='number',
+            placeholder=10,
             value=data[2],
             persistence_type='memory',
             persistence=persistence,
@@ -234,6 +243,7 @@ def instrument_rows(
         dcc.Input(
             id=f'{row_num}-row-input-period',
             type='number',
+            placeholder=1,
             value=data[3],
             persistence_type='memory',
             persistence=persistence,
@@ -242,6 +252,7 @@ def instrument_rows(
         dcc.Input(
             id=f'{row_num}-row-input-ema-periods',
             type='number',
+            placeholder=30,
             value=data[4],
             persistence_type='memory',
             persistence=persistence,
@@ -250,6 +261,7 @@ def instrument_rows(
         dcc.Input(
             id=f'{row_num}-row-input-lrc-periods',
             type='number',
+            placeholder=14,
             value=data[5],
             persistence_type='memory',
             persistence=persistence,
@@ -262,14 +274,27 @@ def instrument_rows(
                 {'label': 'LMT (last)', 'value': 'LMT_last'},
                 {'label': 'LMT (mid)', 'value': 'LMT_mid'},
             ],
+            placeholder='MKT',
             value=data[6],
+            persistence_type='memory',
+            persistence=persistence,
+            style={'width': '80px', 'padding-right': '0px', 'display': display},
+        ),
+        dcc.Dropdown(
+            id=f'{row_num}-row-input-inter-day',
+            options=[
+                {'label': 'True', 'value': 'True'},
+                {'label': 'False', 'value': 'False'},
+            ],
+            placeholder='False',
+            value=data[7],
             persistence_type='memory',
             persistence=persistence,
             style={'width': '80px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-start-stop',
-            on=data[7],
+            on=data[8],
             persistence_type='memory',
             persistence=persistence,
             style={'width': '80px', 'padding-right': '0px', 'display': display},
