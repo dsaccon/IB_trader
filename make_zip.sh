@@ -29,7 +29,9 @@ cp web/dash_helper.py dist/tmp/web/.
 cp web/live.py dist/tmp/web/.
 cp web/live_helper.py dist/tmp/web/.
 cp strats/__init__.py dist/tmp/strats/.
+cp strats/base.py dist/tmp/strats/.
 cp strats/HA_candles.py dist/tmp/strats/.
+cp strats/EMALRC_crossover.py dist/tmp/strats/.
 
 cd dist/tmp
 zip -r -X IB_trader.zip *
