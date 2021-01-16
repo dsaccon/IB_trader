@@ -1,2 +1,2 @@
 from .HA_candles import HACandles
-from .HA_candles import EmaLrcCrossover
+from .EMALRC_crossover import EmaLrcCrossover
