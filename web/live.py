@@ -7,7 +7,8 @@ import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State, ALL
 from web import dash_helper
-from .live_helper import TraderAction, draw_table, get_instrument_config, state_to_rows, instrument_rows
+from .live_helper import TraderAction, draw_table, get_instrument_config
+from .live_helper import state_to_rows, instrument_rows
 from . import MAX_INSTRUMENTS
 
 from app import app
@@ -114,6 +115,7 @@ def update_port(paper_live, connection_type):
             + [State(f'{n}-row-input-ema-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-lrc-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
+            + [State(f'{n}-row-input-inter-day', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
 def update_instruments(n_clicks, *startstop_rows):
     ctx = dash.callback_context
@@ -122,11 +124,24 @@ def update_instruments(n_clicks, *startstop_rows):
 
     instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
     if '-row-input-start-stop' in ctx.triggered[0]['prop_id']:
+        # Pick out updated instrument's row from state
         i = int(ctx.triggered[0]['prop_id'].split('-')[0])
         instrument = rows[i]
         _instruments = {i[0]:i[1:] for i in instruments}
-        if not _instruments == {}:
-            trader_action.updates((instrument,) + _instruments[instrument])
+        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', 'False', True)
+        if not instrument:
+            # No-op without a user-inputted instrument name
+            pass
+        else:
+            # Stopping: doesn't matter what field vals are
+            # Starting: User-inputted instr name + defaults for unfilled fields
+            new_row = [
+                v if v else row_defaults[i]
+                for i, v in enumerate(_instruments[instrument][:-1])
+            ]
+            new_row = tuple(new_row) + (_instruments[instrument][-1],)
+            if not _instruments == {}:
+                trader_action.updates((instrument,) + new_row)
 
     # Trigger new instrument to be added to trader
     rows = state_to_rows(trader_action.state, MAX_INSTRUMENTS)
@@ -141,11 +156,15 @@ def update_instruments(n_clicks, *startstop_rows):
             Input('session-state', 'data'),)
 def update_rows(session_state):
     instruments = get_instrument_config(session_state, MAX_INSTRUMENTS)
+    empty_row = ('', None, '', '', '', '', None, None, False)
     if instruments == [] or instruments == '':
-        instruments = [('', None, '', '', '', '', None, False)]
+        #instruments = [('', None, '', '', '', '', None, None, False)]
+        instruments = [empty_row]
     if session_state is None:
         pass
-    elif len(session_state) == 8*MAX_INSTRUMENTS + 1:
-        instruments.append(('', None, '', '', '', '', None, False))
-    table = draw_table(instruments, MAX_INSTRUMENTS, strategy_name='HACandles')
+    #elif len(session_state) == 9*MAX_INSTRUMENTS + 1:
+    elif len(session_state) == len(empty_row)*MAX_INSTRUMENTS + 1:
+        #instruments.append(('', None, '', '', '', '', None, None, False))
+        instruments.append(empty_row)
+    table = draw_table(instruments, MAX_INSTRUMENTS)
     return table
