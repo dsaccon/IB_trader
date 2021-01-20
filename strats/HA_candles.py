@@ -41,13 +41,12 @@ class HACandles(IBTrader):
         self.last = None # Last trade price, as received from RealTimeBars
 
         self.cancel_enable = False
-
-        self.contract = self._create_contract_obj()
         self.contract_details = None
 
         if not self.debug_mode:
             # Connect to server and start feeds
             self._connect()
+            self._create_contract_obj()
             self._cancel_orders()
             self._subscribe_mktData()
             self._subscribe_rtBars()
