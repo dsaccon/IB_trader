@@ -316,6 +316,7 @@ class IBTrader(EClient, EWrapper):
         contract.secType = self.args.security_type
         contract.exchange = self.args.exchange
         contract.currency = self.args.currency
+        #contract.PrimaryExch = 'NASDAQ'
         return contract
 
     def _codes(self, code):
@@ -359,21 +360,22 @@ class IBTrader(EClient, EWrapper):
         bool:       True if ok to trade, False to skip
 
         """
-        if not self.position in self.expected_positions:
+        if not self.trade_position in self.expected_positions:
             self.logger.warning(
 		f'{dt.datetime.now().timestamp()}, {self.args.symbol}:'
-		f' Skipping trade, unexpected position, {self.position}')
+		f' Skipping trade, unexpected position,'
+                f' {self.trade_position}')
             return False
-        if not self.position == 0:
-            if side == 'Sell' and self.position > 0:
+        if not self.trade_position == 0:
+            if side == 'Sell' and self.trade_position > 0:
                 # Ok to trade
                 pass
-            elif side == 'Buy' and self.position < 0:
+            elif side == 'Buy' and self.trade_position < 0:
                 # Ok to trade
                 pass
             else:
                 # Wait til we get trade conditions of the right side
-                pos = 'long' if self.position > 0 else 'short'
+                pos = 'long' if self.trade_position > 0 else 'short'
                 self.logger.warning(
                     f'{dt.datetime.now().timestamp()},'
                     f' {self.args.symbol}: {side} order'
