@@ -56,11 +56,12 @@ def parse_args_web():
     logfile = 'logs/IB_trader.log'
     if not os.path.isdir('logs/'):
         os.makedirs('logs')
-    if args.loglevel == 'info':
+    if args.loglevel.lower() == 'info':
         logging.basicConfig(filename=logfile, level=logging.INFO)
-    elif args.loglevel == 'warning':
+    elif args.loglevel.lower() == 'warning':
         logging.basicConfig(filename=logfile, level=logging.WARNING)
-        #logging.basicConfig(level=logging.WARNING)
+    elif args.loglevel.lower() == 'debug':
+        logging.basicConfig(filename=logfile, level=logging.DEBUG)
     else:
         raise ValueError
 
@@ -70,6 +71,7 @@ def parse_args_web():
 if __name__ == '__main__':
     argp = argparse.ArgumentParser()
     argp.add_argument("symbol", type=str, default=None, nargs='?')
+    argp.add_argument("-l", "--loglevel", type=str, default=None)
     args = argp.parse_args()
     if args.symbol:
         # Run in CLI
