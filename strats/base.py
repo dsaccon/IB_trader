@@ -91,6 +91,12 @@ class IBTrader(EClient, EWrapper):
         self.expected_positions = (
             0, self.order_size, 2*self.order_size,
             -self.order_size, -2*self.order_size)
+        self.contract = None
+        self._contract = None # Contract details as per API call
+        # Symbols that have problems with 'SMART' routing, define specific exch
+        self.symbol_exchanges = {
+            'ABNB': 'ISLAND'
+        }
 
         #
         if not hasattr(self, 'mktData_reqId'):
@@ -106,7 +112,18 @@ class IBTrader(EClient, EWrapper):
             # First time init of object
             while True:
                 self.historicalData_reqId = random.randint(0, 999)
-                if not self.historicalData_reqId in (self.mktData_reqId, self.mktData_reqId):
+                if not self.historicalData_reqId in (
+                        self.mktData_reqId, self.mktData_reqId):
+                    break
+
+        if not hasattr(self, 'misc_reqId'):
+            # First time init of object
+            while True:
+                self.misc_reqId = random.randint(0, 999)
+                if not self.misc_reqId in (
+                        self.mktData_reqId,
+                        self.mktData_reqId,
+                        self.historicalData_reqId):
                     break
 
         if not hasattr(self, 'order_id'):
@@ -311,13 +328,24 @@ class IBTrader(EClient, EWrapper):
         return order
 
     def _create_contract_obj(self):
-        contract = Contract()
-        contract.symbol = self.args.symbol
-        contract.secType = self.args.security_type
-        contract.exchange = self.args.exchange
-        contract.currency = self.args.currency
-        #contract.PrimaryExch = 'NASDAQ'
-        return contract
+        if not self.contract:
+            contract = Contract()
+            contract.symbol = self.args.symbol
+            contract.localSymbol = self.args.symbol
+            contract.secType = self.args.security_type
+            if contract.symbol in self.symbol_exchanges:
+                contract.exchange = self.symbol_exchanges[contract.symbol]
+            else:
+                contract.exchange = self.args.exchange
+            contract.currency = self.args.currency
+            #contract.PrimaryExch = 'ISLAND'
+            self.contract = contract
+            self.reqContractDetails(self.misc_reqId, self.contract)
+        else:
+            # Called by contractDetails()
+            # Placeholder for programmatic way to resolve issues with 'SMART'
+            # ..routing. In the meantime, use self.symbol_exchanges
+            pass
 
     def _codes(self, code):
         # https://interactivebrokers.github.io/tws-api/message_codes.html
@@ -482,6 +510,21 @@ class IBTrader(EClient, EWrapper):
 #            # Don't start processing data until we get the first msgs from data feed
 #            self._on_update()
 
+    def symbolSamples(self, reqId:int, contractDescriptions):
+        """ returns array of sample contract descriptions """
+        super().symbolSamples(reqId, contractDescriptions)
+
+    def contractDetails(self, reqId:int, contractDetails):
+        """Receives the full contract's definitions. This method will return all
+        contracts matching the requested via EEClientSocket::reqContractDetails.
+        For example, one can obtain the whole option chain with it."""
+        super().contractDetails(reqId, contractDetails)
+        self._contract = contractDetails.contract
+        self._contract.validExchanges = contractDetails.validExchanges
+        self._create_contract_obj()
+
+    def contractDetailsEnd(self, reqId:int):
+        super().contractDetailsEnd(reqId)
 
     ### Strategy-specific functions
 
