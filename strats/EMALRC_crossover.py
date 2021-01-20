@@ -40,11 +40,10 @@ class EmaLrcCrossover(IBTrader):
 
         self.cancel_enable = False
 
-        self.contract = self._create_contract_obj()
-
         if not self.debug_mode:
             # Connect to server and start feeds
             self._connect()
+            self._create_contract_obj()
             self._get_positions()
             self._cancel_orders()
             self._subscribe_mktData()
