@@ -143,7 +143,7 @@ class TraderAction:
 def draw_table(data, len_table):
     cols = (
         'Symbol', 'Strategy', 'Size', 'Period (m)', 'EMA periods',
-        'LRC periods', 'Order type', 'Inter-day', 'Start/Stop')
+        'LRC periods', 'Order type', 'Start/Stop')
     table = [
         html.Tr([
             html.Th(c, style={'width': '80px', 'font-weight': 'normal', 'font-size': 13})
@@ -177,8 +177,7 @@ def get_instrument_config(state, offset):
                     state[i+4*offset],
                     state[i+5*offset],
                     state[i+6*offset],
-                    state[i+7*offset],
-                    state[i+8*offset]))
+                    state[i+7*offset]))
     else:
         instruments = ''
     return instruments
@@ -187,7 +186,6 @@ def state_to_rows(state, offset):
     rows = (
         [None for _ in range(offset)]
         + ['' for _ in range(5*offset)]
-        + [None for _ in range(offset)]
         + [None for _ in range(offset)]
         + [False for _ in range(offset)])
     for i, instrument in enumerate(state):
@@ -199,7 +197,6 @@ def state_to_rows(state, offset):
         rows[i + 5*offset] = state[instrument]['args'][4]
         rows[i + 6*offset] = state[instrument]['args'][5]
         rows[i + 7*offset] = state[instrument]['args'][6]
-        rows[i + 8*offset] = state[instrument]['args'][7]
     return tuple(rows)
 
 def instrument_rows(
@@ -208,7 +205,7 @@ def instrument_rows(
         display='inline-block',
         persistence=False):
     if data is None:
-        data=('', None, '', '', '', '', None, None, False)
+        data=('', None, '', '', '', '', None, False)
     row = [
         dcc.Input(
             id=f'{row_num}-row-input-symbol',
@@ -280,21 +277,9 @@ def instrument_rows(
             persistence=persistence,
             style={'width': '80px', 'padding-right': '0px', 'display': display},
         ),
-        dcc.Dropdown(
-            id=f'{row_num}-row-input-inter-day',
-            options=[
-                {'label': 'True', 'value': 'True'},
-                {'label': 'False', 'value': 'False'},
-            ],
-            placeholder='False',
-            value=data[7],
-            persistence_type='memory',
-            persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display},
-        ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-start-stop',
-            on=data[8],
+            on=data[7],
             persistence_type='memory',
             persistence=persistence,
             style={'width': '80px', 'padding-right': '0px', 'display': display},

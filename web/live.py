@@ -115,7 +115,6 @@ def update_port(paper_live, connection_type):
             + [State(f'{n}-row-input-ema-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-lrc-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
-            + [State(f'{n}-row-input-inter-day', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
 def update_instruments(n_clicks, *startstop_rows):
     ctx = dash.callback_context
@@ -128,7 +127,7 @@ def update_instruments(n_clicks, *startstop_rows):
         i = int(ctx.triggered[0]['prop_id'].split('-')[0])
         instrument = rows[i]
         _instruments = {i[0]:i[1:] for i in instruments}
-        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', 'False', True)
+        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', True)
         if not instrument:
             # No-op without a user-inputted instrument name
             pass
@@ -156,15 +155,12 @@ def update_instruments(n_clicks, *startstop_rows):
             Input('session-state', 'data'),)
 def update_rows(session_state):
     instruments = get_instrument_config(session_state, MAX_INSTRUMENTS)
-    empty_row = ('', None, '', '', '', '', None, None, False)
+    empty_row = ('', None, '', '', '', '', None, False)
     if instruments == [] or instruments == '':
-        #instruments = [('', None, '', '', '', '', None, None, False)]
         instruments = [empty_row]
     if session_state is None:
         pass
-    #elif len(session_state) == 9*MAX_INSTRUMENTS + 1:
     elif len(session_state) == len(empty_row)*MAX_INSTRUMENTS + 1:
-        #instruments.append(('', None, '', '', '', '', None, None, False))
         instruments.append(empty_row)
     table = draw_table(instruments, MAX_INSTRUMENTS)
     return table
