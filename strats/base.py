@@ -95,7 +95,8 @@ class IBTrader(EClient, EWrapper):
         self._contract = None # Contract details as per API call
         # Symbols that have problems with 'SMART' routing, define specific exch
         self.symbol_exchanges = {
-            'ABNB': 'ISLAND'
+            'ABNB': 'ISLAND',
+            'KWEB': 'ISLAND'
         }
 
         #
@@ -486,9 +487,9 @@ class IBTrader(EClient, EWrapper):
             f'Low: {bar.low}, Close: {bar.close}')
 
     def position(self, account:str, contract:Contract, position:float, avgCost:float):
-        self.logger.info(
+        self.logger.warning(
             f'account: {account}',
-            f'contract: {contract}',
+            f'contract: {contract.conId}, {contract.symbol}, {contract.exchange}',
             f'position: {position}',
             f'avgCost: {avgCost}')
         if contract.symbol == self.args.symbol:
@@ -522,6 +523,7 @@ class IBTrader(EClient, EWrapper):
         self._contract = contractDetails.contract
         self._contract.validExchanges = contractDetails.validExchanges
         self._create_contract_obj()
+        #print('Contract details:', self._contract, self._contract.validExchanges)
 
     def contractDetailsEnd(self, reqId:int):
         super().contractDetailsEnd(reqId)
