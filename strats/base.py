@@ -487,12 +487,12 @@ class IBTrader(EClient, EWrapper):
             f'Low: {bar.low}, Close: {bar.close}')
 
     def position(self, account:str, contract:Contract, position:float, avgCost:float):
-        self.logger.warning(
-            f'account: {account}',
-            f'contract: {contract.conId}, {contract.symbol}, {contract.exchange}',
-            f'position: {position}',
-            f'avgCost: {avgCost}')
+        super().position(account, contract, position, avgCost)
+        _contract = contract.__str__()
         if contract.symbol == self.args.symbol:
+            self.logger.warning(
+                f'Position: {account}, {_contract.split(",")[0]}'
+                f' {_contract.split(",")[1]}, {position}')
             self.trade_position = position
 
     def positionEnd(self):
