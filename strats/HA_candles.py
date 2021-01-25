@@ -47,6 +47,7 @@ class HACandles(IBTrader):
             # Connect to server and start feeds
             self._connect()
             self._create_contract_obj()
+            self._get_positions()
             self._cancel_orders()
             self._subscribe_mktData()
             self._subscribe_rtBars()
