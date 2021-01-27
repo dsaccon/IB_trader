@@ -88,9 +88,7 @@ class IBTrader(EClient, EWrapper):
         self.order_size = args.order_size
         self.first_order = True # Set to False after first order
         self.trade_position = 0
-        self.expected_positions = (
-            0, self.order_size, 2*self.order_size,
-            -self.order_size, -2*self.order_size)
+        self.expected_positions = (0, self.order_size, -self.order_size)
         self.contract = None
         self._contract = None # Contract details as per API call
         # Symbols that have problems with 'SMART' routing, define specific exch
