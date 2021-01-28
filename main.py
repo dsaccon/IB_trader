@@ -49,7 +49,7 @@ def main_web():
 def parse_args_web():
     argp = argparse.ArgumentParser()
     argp.add_argument(
-        "-l", "--loglevel", type=str, default='warning', help="Logging options: debug/info/warning"
+        "-l", "--loglevel", type=str, default='error', help="Logging options: debug/info/warning"
     )
     args = argp.parse_args()
 
@@ -62,6 +62,8 @@ def parse_args_web():
         logging.basicConfig(filename=logfile, level=logging.WARNING)
     elif args.loglevel.lower() == 'debug':
         logging.basicConfig(filename=logfile, level=logging.DEBUG)
+    elif args.loglevel.lower() == 'error':
+        logging.basicConfig(filename=logfile, level=logging.ERROR)
     else:
         raise ValueError
 
