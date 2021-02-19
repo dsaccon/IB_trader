@@ -62,9 +62,18 @@ layout = html.Div([
                     persistence=False,
                     style={'width': '120px'}
                 ),
-            ], style={'width': '150px', 'display': 'inline-block'},
+            ], style={'width': '120px', 'display': 'inline-block'},
         ),
     ], style={'width': '70%'}),
+    html.Br(),
+    daq.BooleanSwitch(
+        id='load-previous-session',
+        on=False,
+        label="Load previous session",
+        persistence_type='memory',
+        persistence=False,
+        style={'width': '150px'},
+    ),
     html.Br(),
     html.Table(id='rows-content'),
     html.Br(),
@@ -105,9 +114,57 @@ def update_port(paper_live, connection_type):
     return _val
 
 
+#@app.callback(Output('session-state', 'data'),
+#            [Input('add-instrument-row', 'n_clicks')]
+#            + [Input(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)],
+#            [State(f'{n}-row-input-symbol', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-strategy', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-size', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-period', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-ema-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-lrc-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-continue-session', 'on') for n in range(0, MAX_INSTRUMENTS)]
+#            + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
+#def update_instruments(n_clicks, *startstop_rows):
+#    ctx = dash.callback_context
+#    start_stop = startstop_rows[:MAX_INSTRUMENTS]
+#    rows = startstop_rows[MAX_INSTRUMENTS:]
+#
+#    instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
+#    if '-row-input-start-stop' in ctx.triggered[0]['prop_id']:
+#        # Pick out updated instrument's row from state
+#        i = int(ctx.triggered[0]['prop_id'].split('-')[0])
+#        instrument = rows[i]
+#        _instruments = {i[0]:i[1:] for i in instruments}
+#        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', False, True)
+#        if not instrument:
+#            # No-op without a user-inputted instrument name
+#            pass
+#        else:
+#            # Stopping: doesn't matter what field vals are
+#            # Starting: User-inputted instr name + defaults for unfilled fields
+#            new_row = [
+#                v if v else row_defaults[i]
+#                for i, v in enumerate(_instruments[instrument][:-1])
+#            ]
+#            new_row = tuple(new_row) + (_instruments[instrument][-1],)
+#            if not _instruments == {}:
+#                trader_action.updates((instrument,) + new_row)
+#
+#    # Trigger new instrument to be added to trader
+#    rows = state_to_rows(trader_action.state, MAX_INSTRUMENTS)
+#
+#    if ctx.triggered[0]['prop_id'] == 'add-instrument-row.n_clicks':
+#        rows = rows + (True,)
+#
+#    return rows
+
 @app.callback(Output('session-state', 'data'),
-            [Input('add-instrument-row', 'n_clicks')]
-            + [Input(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)],
+            [Input('add-instrument-row', 'n_clicks'),
+            Input('load-previous-session', 'on')]
+            + [Input(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)]
+            + [Input(f'{n}-row-input-continue-session', 'on') for n in range(0, MAX_INSTRUMENTS)],
             [State(f'{n}-row-input-symbol', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-strategy', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-size', 'value') for n in range(0, MAX_INSTRUMENTS)]
@@ -115,19 +172,56 @@ def update_port(paper_live, connection_type):
             + [State(f'{n}-row-input-ema-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-lrc-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
+            + [State(f'{n}-row-input-continue-session', 'on') for n in range(0, MAX_INSTRUMENTS)]
             + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
-def update_instruments(n_clicks, *startstop_rows):
+def update_instruments(n_clicks, load_previous_session, *args):
+    load_previous_session = args[:MAX_INSTRUMENTS]
+    startstop_rows = args[MAX_INSTRUMENTS:]
     ctx = dash.callback_context
     start_stop = startstop_rows[:MAX_INSTRUMENTS]
     rows = startstop_rows[MAX_INSTRUMENTS:]
+    instruments = get_instrument_config(rows, MAX_INSTRUMENTS) ### new
 
-    instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
+    if 'row-input-continue-session' in ctx.triggered[0]['prop_id']:
+        i = int(ctx.triggered[0]['prop_id'].split('-')[0])
+        continue_session = instruments[i][-2]
+        instrument = rows[i]
+
+        # Check if live session (trade_action) has been created
+        _instrument = trader_action.state.get(instrument)
+        if _instrument:
+            prev_state = trader_action.state.get(instrument)['args']
+            new_state = tuple(prev_state[:-2]) + (continue_session, prev_state[-1])
+            trader_action.state[instrument]['args'] = new_state
+            trader_action._session_dump()
+
+        # Update rows state for browser to persist selection
+        _state = {k:{'args':v['args']} for k,v in trader_action.state.items()}
+        _state[instrument] = {'args': instruments[i][1:]}
+        rows = state_to_rows(_state, MAX_INSTRUMENTS)
+        return rows
+
+    if 'load-previous-session' in ctx.triggered[0]['prop_id']:
+        sessions = trader_action._session_load()
+        if sessions:
+            state = {
+                sess[0]:{'args': sess[1:]}
+                for sess in sessions
+                if sess[-2]
+            }
+            rows = state_to_rows(state, MAX_INSTRUMENTS)
+            for sess in sessions:
+                if sess[-2]:
+                    trader_action.updates(sess)
+            return rows
+
+    #instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
     if '-row-input-start-stop' in ctx.triggered[0]['prop_id']:
         # Pick out updated instrument's row from state
         i = int(ctx.triggered[0]['prop_id'].split('-')[0])
         instrument = rows[i]
         _instruments = {i[0]:i[1:] for i in instruments}
-        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', True)
+        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', False, True)
         if not instrument:
             # No-op without a user-inputted instrument name
             pass
@@ -155,7 +249,7 @@ def update_instruments(n_clicks, *startstop_rows):
             Input('session-state', 'data'),)
 def update_rows(session_state):
     instruments = get_instrument_config(session_state, MAX_INSTRUMENTS)
-    empty_row = ('', None, '', '', '', '', None, False)
+    empty_row = ('', None, '', '', '', '', None, False, False)
     if instruments == [] or instruments == '':
         instruments = [empty_row]
     if session_state is None:
