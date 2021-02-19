@@ -1,8 +1,10 @@
 #!/usr/local/bin/python3
 
 # -*- coding: utf-8 -*-
+import os
 import time
 import random
+import csv
 import logging
 import threading
 import dash_core_components as dcc
@@ -41,6 +43,7 @@ class TraderAction:
             # First time start up for this instrument/symbol
             self.state[instrument[0]] = {}
             self.state[instrument[0]]['args'] = instrument[1:]
+            self._session_dump()
             self.state[instrument[0]]['order_id_start'] = self.next_order_id_start
             self.next_order_id_start += TraderAction.order_id_offset
             self.state[instrument[0]]['clientId'] = self._get_new_clientId()
@@ -49,6 +52,7 @@ class TraderAction:
         if not self.state[instrument[0]]['args'][-1] == instrument[-1]:
             # Start/Stop button flipped from previous state
             self.state[instrument[0]]['args'] = instrument[1:]
+            self._session_dump()
             if self.state[instrument[0]]['args'][-1]:
                 self._start(instrument[0])
             else:
@@ -115,7 +119,6 @@ class TraderAction:
                     time.sleep(0.5)
             self.logger.warning(f'WEB: Thread stopped: {instrument}')
 
-
     def _make_args(self, instrument):
         args = Object()
 #        args.strategy = self.strategy
@@ -139,11 +142,47 @@ class TraderAction:
             args.quote_type = 'last'
         return args
 
+    def _session_dump(self):
+        #if not self.port in (4001, 7496):
+        #    return
+        session = ([(k,)+tuple(v['args']) for k,v in self.state.items()])
+        session = [v for s in session for v in s]
+        with open(f'logs/session_state.csv', 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(session)
+
+    def _session_load(self):
+        #if not self.port in (4001, 7496):
+        #    return
+        if not os.path.isfile('logs/session_state.csv'):
+            # Create empty file
+            with open('logs/session_state.csv', 'w') as f:
+                pass
+        with open(f'logs/session_state.csv', 'r') as f:
+            reader = csv.reader(f)
+            session = None
+            make_row = lambda r: (
+                r[0], r[1], int(r[2]), int(r[3]), int(r[4]),
+                int(r[5]), r[6],
+                True if r[7] == 'True' else False,
+                True if r[8] == 'True' else False)
+            for row in reader:
+                i = 0
+                while True:
+                    row[i:i+9] = make_row(row[i:i+9])
+                    i += 9
+                    if i == len(row):
+                        break
+                session = row
+        if not session:
+            return session
+        return [session[i*9:i*9+9] for i in range(int(len(session)/9))]
+
 # Utility functions
 def draw_table(data, len_table):
     cols = (
         'Symbol', 'Strategy', 'Size', 'Period (m)', 'EMA periods',
-        'LRC periods', 'Order type', 'Start/Stop')
+        'LRC periods', 'Order type', 'Continue', 'Start/Stop')
     table = [
         html.Tr([
             html.Th(c, style={'width': '80px', 'font-weight': 'normal', 'font-size': 13})
@@ -177,7 +216,8 @@ def get_instrument_config(state, offset):
                     state[i+4*offset],
                     state[i+5*offset],
                     state[i+6*offset],
-                    state[i+7*offset]))
+                    state[i+7*offset],
+                    state[i+8*offset]))
     else:
         instruments = ''
     return instruments
@@ -187,6 +227,7 @@ def state_to_rows(state, offset):
         [None for _ in range(offset)]
         + ['' for _ in range(5*offset)]
         + [None for _ in range(offset)]
+        + [False for _ in range(offset)]
         + [False for _ in range(offset)])
     for i, instrument in enumerate(state):
         rows[i] = instrument
@@ -197,6 +238,7 @@ def state_to_rows(state, offset):
         rows[i + 5*offset] = state[instrument]['args'][4]
         rows[i + 6*offset] = state[instrument]['args'][5]
         rows[i + 7*offset] = state[instrument]['args'][6]
+        rows[i + 8*offset] = state[instrument]['args'][7]
     return tuple(rows)
 
 def instrument_rows(
@@ -205,7 +247,7 @@ def instrument_rows(
         display='inline-block',
         persistence=False):
     if data is None:
-        data=('', None, '', '', '', '', None, False)
+        data=('', None, '', '', '', '', None, False, False)
     row = [
         dcc.Input(
             id=f'{row_num}-row-input-symbol',
@@ -278,8 +320,15 @@ def instrument_rows(
             style={'width': '80px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
-            id=f'{row_num}-row-input-start-stop',
+            id=f'{row_num}-row-input-continue-session',
             on=data[7],
+            persistence_type='memory',
+            persistence=True,
+            style={'width': '80px', 'padding-right': '0px', 'display': display},
+        ),
+        daq.BooleanSwitch(
+            id=f'{row_num}-row-input-start-stop',
+            on=data[8],
             persistence_type='memory',
             persistence=persistence,
             style={'width': '80px', 'padding-right': '0px', 'display': display},
