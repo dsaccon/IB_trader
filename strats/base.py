@@ -63,7 +63,7 @@ class IBTrader(EClient, EWrapper):
         if args.debug:
             self.debug_mode = True
 
-        self.logger.info(
+        self.logger.warning(
             f'Starting with args -'
             f' symbol: {self.args.strategy},'
             f' symbol: {self.args.symbol},'
@@ -91,6 +91,7 @@ class IBTrader(EClient, EWrapper):
         self.expected_positions = (0, self.order_size, -self.order_size)
         self.contract = None
         self._contract = None # Contract details as per API call
+        self.shortable_shares = 0
         # Symbols that have problems with 'SMART' routing, define specific exch
         self.symbol_exchanges = {
             'ABNB': 'ISLAND',
@@ -201,8 +202,8 @@ class IBTrader(EClient, EWrapper):
             time.sleep(0.5)
         self.logger.info(f'Disconnected - {self.args.symbol}, {self.client_id}')
 
-    def _subscribe_mktData(self):
-        self.reqMktData(self.mktData_reqId, self.contract, '', False, False, [])
+    def _subscribe_mktData(self, tick_list=''):
+        self.reqMktData(self.mktData_reqId, self.contract, tick_list, False, False, [])
 
     def _subscribe_rtBars(self):
         self.reqRealTimeBars(
@@ -373,7 +374,7 @@ class IBTrader(EClient, EWrapper):
                     return trade
         return None
 
-    def _check_position_status(self, side):
+    def _check_position_status(self, side, live_candle=True):
         """
         Logic for checking existing positions built up from prior runs
         when thread first starts up
@@ -381,11 +382,15 @@ class IBTrader(EClient, EWrapper):
         Arguments
         ---------
         side (str): 'Buy' or 'Sell'
+        live_candle (bool):
+            Whether the candle is from historical (False) or live (True) data
 
         Returns
         ---------
-        bool:       True if ok to trade, False to skip
-
+        if live_candle:
+            bool:       True if ok to trade, False to skip
+        else:
+            _side (str) 'Buy' or 'Sell'
         """
         if not self.trade_position in self.expected_positions:
             self.logger.warning(
@@ -393,33 +398,106 @@ class IBTrader(EClient, EWrapper):
 		f' Skipping trade, unexpected position,'
                 f' {self.trade_position}')
             return False
-        if not self.trade_position == 0:
-            if side == 'Sell' and self.trade_position > 0:
-                # Ok to trade
-                pass
-            elif side == 'Buy' and self.trade_position < 0:
-                # Ok to trade
-                pass
-            else:
-                # Wait til we get trade conditions of the right side
-                pos = 'long' if self.trade_position > 0 else 'short'
-                self.logger.warning(
-                    f'{dt.datetime.now().timestamp()},'
-                    f' {self.args.symbol}: {side} order'
-                    f' conditions met, but skipping since'
-                    f' account has a {pos} position')
-                return False
-            # Not the first trade, double trade size
+        if live_candle:
+            if not self.trade_position == 0:
+                if side == 'Sell' and self.trade_position > 0:
+                    # Ok to trade
+                    pass
+                elif side == 'Buy' and self.trade_position < 0:
+                    # Ok to trade
+                    pass
+                else:
+                    # Wait til we get trade conditions of the right side
+                    pos = 'long' if self.trade_position > 0 else 'short'
+                    self.logger.warning(
+                        f'{dt.datetime.now().timestamp()},'
+                        f' {self.args.symbol}: {side} order'
+                        f' conditions met, but skipping since'
+                        f' account has a {pos} position')
+                    return False
+                # Not the first trade, double trade size
+                self.first_order = False # In case no historical candle was used
+                #self._order_size_doubler()
+            return True
+        else:
+            # Historical candle received
+            # Set up to open/maintain position following most recent
+            #  candle from prior to start of run
+
             self.first_order = False
-            self.order_size *= 2
+            if self.trade_position == 0:
+                return side
+            elif self.trade_position > 0:
+                #self._order_size_doubler()
+                if side == 'Buy':
+                    self.logger.warning(
+                        f'{self.args.symbol}:'
+                        f' Last crossover from historical data agrees'
+                        f' with existing position,'
+                        f' do not place a new order')
+                    return None
+                elif side == 'Sell':
+                    return side
+            elif self.trade_position < 0:
+                #self._order_size_doubler()
+                if side == 'Buy':
+                    return side
+                elif side == 'Sell':
+                    self.logger.warning(
+                        f'{self.args.symbol}:'
+                        f' Last crossover from historical data agrees'
+                        f' with existing position,'
+                        f' do not place a new order')
+                    return None
+
+    def _order_precheck(self, side=None):
+        """
+        Pre-order checks
+            - Doubling of order size, based on trade position
+            - Check if shares can be shorted. Adjust size or block trade accordingly
+
+        Arguments
+        ---------
+        side (str): 'Buy' or 'Sell'
+
+        Returns
+        ---------
+        bool:   True if order can proceed, False otherwise
+
+        """
+
+        # Order-size doubler (with extra checks)
+        if self.args.order_size == self.order_size: # Hasn't already been doubled
+            #if not self.first_order:
+            if not self.trade_position == 0: # Don't double if still in neutral pos
+                self.order_size *= 2
+
+        # Shortable stock check
+        if side == 'Sell':
+            if not self.shortable_shares > self.args.order_size:
+                # Not possible to short shares
+                if self.trade_position == 0:
+                    self.logger.warning(
+                        f'{self.args.symbol}: Skipping Sell order,'
+                        f' shorting is not available for this symbol'
+                        f' and current position is 0')
+                    return False # Not possible to trade
+                # Ensure order size is not doubled
+                self.order_size = self.args.order_size
+
+        # Buy order with 0 position means either:
+        #  - its the first order
+        #  - last short was for half size (i.e. not shortable)
+        if side == 'Buy' and self.trade_position == 0:
+            # Make sure size is not doubled
+            self.order_size = self.args.order_size
 
         return True
-
 
     ### Modified EClient/EWrapper functions
 
     def error(self, reqId, errorCode, errorString):
-        self.logger.warning(f'{self._codes(errorCode)}, {errorCode}, {errorString}')
+        self.logger.error(f'{self._codes(errorCode)}, {errorCode}, {errorString}')
 
     def tickPrice(self, reqId, tickType, price, attrib):
         if tickType == 1 and reqId == self.mktData_reqId:
@@ -435,6 +513,11 @@ class IBTrader(EClient, EWrapper):
             self.last = price
             self.logger.info(f'Last trade update: {price}')
 
+    def tickSize(self, reqId, tickType, size:int):
+        """Market data tick size callback. Handles all size-related ticks."""
+        if tickType == 89:
+            self.shortable_shares = size
+
     def nextValidId(self, orderId: int):
         super().nextValidId(orderId)
         #self.order_id = orderId
@@ -443,7 +526,7 @@ class IBTrader(EClient, EWrapper):
     def orderStatus(
 	    self, orderId, status, filled, remaining, avgFullPrice,
 	    permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
-        self.logger.info(
+        self.logger.warning(
             f'orderStatus - orderid: {orderId}, status: {status}'
             f'filled: {filled}, remaining: {remaining}'
             f'lastFillPrice: {lastFillPrice}')
@@ -456,7 +539,7 @@ class IBTrader(EClient, EWrapper):
                 f'{order.totalQuantity}, {orderState.status}')
             self.cancelOrder(orderId)
             return
-        self.logger.info(
+        self.logger.warning(
             f'openOrder id: {orderId}, {contract.symbol}, {contract.secType},'
             f'@, {contract.exchange}, {order.action}, {order.orderType},'
             f'{order.totalQuantity}, {orderState.status}')
@@ -500,14 +583,10 @@ class IBTrader(EClient, EWrapper):
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         self._tohlc = (time, open_, high, low, close)
-        self.logger.warning(
+        self.logger.info(
             f'RealTimeBar. TickerId: {reqId}, {self.args.symbol}, '
             f'{dt.datetime.fromtimestamp(time)}, OHLC: '
             f'{self._tohlc[1:]}, {volume}, {wap}, {count}')
-        #
-#        if self.last and self.best_bid and self.best_ask:
-#            # Don't start processing data until we get the first msgs from data feed
-#            self._on_update()
 
     def symbolSamples(self, reqId:int, contractDescriptions):
         """ returns array of sample contract descriptions """
@@ -521,7 +600,6 @@ class IBTrader(EClient, EWrapper):
         self._contract = contractDetails.contract
         self._contract.validExchanges = contractDetails.validExchanges
         self._create_contract_obj()
-        #print('Contract details:', self._contract, self._contract.validExchanges)
 
     def contractDetailsEnd(self, reqId:int):
         super().contractDetailsEnd(reqId)
