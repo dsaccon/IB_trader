@@ -49,7 +49,7 @@ class HACandles(IBTrader):
             self._create_contract_obj()
             self._get_positions()
             self._cancel_orders()
-            self._subscribe_mktData()
+            self._subscribe_mktData(tick_list='236,')
             self._subscribe_rtBars()
         else:
             # Run test setup here
@@ -111,7 +111,7 @@ class HACandles(IBTrader):
 #                if isinstance(self.candles['ha_color'].values[-2], str):
 #                    # Check it is not an indecision candle
 #                    bar_color_prev = self.candles['ha_color'].values[-2].upper()
-            self.logger.warning(f'Candle: {self.cache[-1][0]}, {self.args.symbol} - {bar_color}')
+            self.logger.warning(f'HA Candle: {self.cache[-1][0]}, {self.args.symbol} - {bar_color}')
             csv_row = [col[1] for col in _pd.items()]
             csv_row.insert(1, self.args.symbol)
             self._write_csv_row((csv_row,), self.logfile_candles)
@@ -183,15 +183,23 @@ class HACandles(IBTrader):
             # Skip trade if not allowed by existing position from prior run
             if not self._check_position_status(_side):
                 return
+            ok_order = self._order_precheck(side=_side)
+            if not ok_order:
+                # Sell order, shorting not available and 0 trade_position
+                return
             order_obj = self._place_order(_side)
-            if self.args.order_size == self.order_size:
-                self.first_order = False
-                self.order_size *= 2
+#            if self.args.order_size == self.order_size:
+#                self.first_order = False
+#                self.order_size *= 2
             #self.first_order = False
             #self.order_size *= 2
         elif not (
                 self.candles['ha_color'].values[-1]
                     == self.candles['ha_color'].values[-2]):
+            ok_order = self._order_precheck(side=_side)
+            if not ok_order:
+                # Sell order, shorting not available and 0 trade_position
+                return
             order_obj = self._place_order(_side)
         else:
             # Candle color same as previous. Do not place an order
