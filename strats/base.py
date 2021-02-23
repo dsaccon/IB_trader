@@ -95,7 +95,8 @@ class IBTrader(EClient, EWrapper):
         # Symbols that have problems with 'SMART' routing, define specific exch
         self.symbol_exchanges = {
             'ABNB': 'ISLAND',
-            'KWEB': 'ISLAND'
+            'KWEB': 'ISLAND',
+            'LX': 'ISLAND',
         }
 
         #
