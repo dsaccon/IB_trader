@@ -56,7 +56,7 @@ class EmaLrcCrossover(IBTrader):
     ### Internal utility functions
 
     def _get_historical_data(self):
-        multiplier = 500 # Add buffer to make sure we have enough data to find last crossover
+        multiplier = 100 # Add buffer to make sure we have enough data to find last crossover
         interval = multiplier*self.period * max(self.args.ema_periods, self.args.lrc_periods)
         start = dt.datetime.fromtimestamp(dt.datetime.now().timestamp() - interval)
         interval = ib.IbAPI._convert_start_end(start, dt.datetime.now())[0]
@@ -84,7 +84,7 @@ class EmaLrcCrossover(IBTrader):
     def historicalDataEnd(self, reqId:int, start:str, end:str):
         self.historical_end = True
         self._on_update(None)
-        self._trim_df()
+        #self._trim_df() # Disable, was causing issues with EMA calcs
 
 
     ### Strategy-specific functions
