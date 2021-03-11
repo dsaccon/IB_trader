@@ -185,19 +185,19 @@ def draw_table(data, len_table):
         'LRC periods', 'Order type', 'Continue', 'Start/Stop')
     table = [
         html.Tr([
-            html.Th(c, style={'width': '80px', 'font-weight': 'normal', 'font-size': 13})
+            html.Th(c, style={'width': '60px', 'padding-right': '10px', 'padding-left': '0px', 'font-weight': 'normal', 'font-size': 12})
             for c in cols
         ])
     ] + [
         html.Tr([
-            html.Td(c, style={'width': '80px', 'display': 'none'})
+            html.Td(c, style={'width': '60px', 'padding-right': '10px', 'padding-left': '0px', 'padding-top': '0px', 'padding-bottom': '0px', 'display': 'none'})
             for c in instrument_rows(n, display='none')
         ])
         if n >= len(data)
         else html.Tr([
-            html.Td(c, style={'width': '80px'})
+            html.Td(c, style={'width': '60px', 'padding-right': '10px', 'padding-left': '0px', 'padding-top': '0px', 'padding-bottom': '0px',})
             for c in instrument_rows(n, data=data[n])
-        ])
+        ], style={'height': '5px'})
         for n in range(len_table)
     ]
     return table
@@ -256,19 +256,19 @@ def instrument_rows(
             value=data[0],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'display': display}
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'display': display}
         ),
         dcc.Dropdown(
             id=f'{row_num}-row-input-strategy',
             options=[
-                {'label': 'HA', 'value': 'HACandles'},
                 {'label': 'EMA-LRC', 'value': 'EmaLrcCrossover'},
+                {'label': 'HA', 'value': 'HACandles'},
             ],
-            placeholder="HA",
+            placeholder="EMA-LRC",
             value=data[1],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display},
+            style={'vertical-align': 'middle', 'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         dcc.Input(
             id=f'{row_num}-row-input-size',
@@ -277,7 +277,7 @@ def instrument_rows(
             value=data[2],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-period',
@@ -286,7 +286,7 @@ def instrument_rows(
             value=data[3],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-ema-periods',
@@ -295,7 +295,7 @@ def instrument_rows(
             value=data[4],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-lrc-periods',
@@ -304,7 +304,7 @@ def instrument_rows(
             value=data[5],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Dropdown(
             id=f'{row_num}-row-input-order-type',
@@ -317,21 +317,21 @@ def instrument_rows(
             value=data[6],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display},
+            style={'vertical-align': 'middle', 'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-continue-session',
             on=data[7],
             persistence_type='memory',
             persistence=True,
-            style={'width': '80px', 'padding-right': '0px', 'display': display},
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-start-stop',
             on=data[8],
             persistence_type='memory',
             persistence=persistence,
-            style={'width': '80px', 'padding-right': '0px', 'display': display},
+            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
     ]
     return row
