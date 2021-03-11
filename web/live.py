@@ -74,7 +74,6 @@ layout = html.Div([
         persistence=False,
         style={'width': '150px'},
     ),
-    html.Br(),
     html.Table(id='rows-content'),
     html.Br(),
     html.Button(id='add-instrument-row', n_clicks=0, children='Add instrument'),
@@ -221,7 +220,7 @@ def update_instruments(n_clicks, load_previous_session, *args):
         i = int(ctx.triggered[0]['prop_id'].split('-')[0])
         instrument = rows[i]
         _instruments = {i[0]:i[1:] for i in instruments}
-        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', False, True)
+        row_defaults = ('EmaLrcCrossover', 10, 1, 30, 14, 'MKT', False, True)
         if not instrument:
             # No-op without a user-inputted instrument name
             pass
