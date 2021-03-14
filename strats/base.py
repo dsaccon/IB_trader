@@ -97,6 +97,8 @@ class IBTrader(EClient, EWrapper):
             'ABNB': 'ISLAND',
             'KWEB': 'ISLAND',
             'LX': 'ISLAND',
+            'OPEN': 'ISLAND',
+            'SOXS': 'ISLAND',
         }
 
         #
@@ -475,6 +477,13 @@ class IBTrader(EClient, EWrapper):
 
         # Shortable stock check
         if side == 'Sell':
+            msg = (
+                f'Precheck: {self.args.symbol},'
+                f' shortable shares: {self.shortable_shares},'
+                f' order size: {self.order_size},'
+                f' cfgd size: {self.args.order_size},'
+                f' position: {self.trade_position}')
+            self.logger.warning(msg)
             if not self.shortable_shares > self.args.order_size:
                 # Not possible to short shares
                 if self.trade_position == 0:
