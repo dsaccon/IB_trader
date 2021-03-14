@@ -1,4 +1,5 @@
 import sys, os
+import datetime as dt
 import logging
 import argparse
 
@@ -14,7 +15,7 @@ def main_web():
     args = parse_args_web()
     app.args = args
 
-    sys.path.append('backtesting/')
+    sys.path.append('backtesting/crypto_momentum')
 
     from web import live, backtesting
 
@@ -30,7 +31,6 @@ def main_web():
 	dcc.Link('Backtesting', href='/backtesting'),
     ])
 
-
     @app.callback(Output('page-content', 'children'),
 		  Input('url', 'pathname'))
     def display_page(pathname):
@@ -43,6 +43,7 @@ def main_web():
         else:
             return '404'
 
+    logging.warning(f'Starting: {dt.datetime.now().timestamp()}')
     app.run_server(host='0.0.0.0', port=8080, debug=True)
 
 
