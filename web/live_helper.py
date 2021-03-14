@@ -256,7 +256,7 @@ def instrument_rows(
             value=data[0],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'display': display}
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'display': display}
         ),
         dcc.Dropdown(
             id=f'{row_num}-row-input-strategy',
@@ -268,7 +268,7 @@ def instrument_rows(
             value=data[1],
             persistence_type='memory',
             persistence=persistence,
-            style={'vertical-align': 'middle', 'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
+            style={'vertical-align': 'middle', 'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         dcc.Input(
             id=f'{row_num}-row-input-size',
@@ -277,7 +277,7 @@ def instrument_rows(
             value=data[2],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-period',
@@ -286,7 +286,7 @@ def instrument_rows(
             value=data[3],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-ema-periods',
@@ -295,7 +295,7 @@ def instrument_rows(
             value=data[4],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Input(
             id=f'{row_num}-row-input-lrc-periods',
@@ -304,7 +304,7 @@ def instrument_rows(
             value=data[5],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display}
         ),
         dcc.Dropdown(
             id=f'{row_num}-row-input-order-type',
@@ -317,21 +317,21 @@ def instrument_rows(
             value=data[6],
             persistence_type='memory',
             persistence=persistence,
-            style={'vertical-align': 'middle', 'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
+            style={'vertical-align': 'middle', 'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-continue-session',
             on=data[7],
             persistence_type='memory',
             persistence=True,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
         daq.BooleanSwitch(
             id=f'{row_num}-row-input-start-stop',
             on=data[8],
             persistence_type='memory',
             persistence=persistence,
-            style={'font-size': '10px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
+            style={'font-size': '11px', 'height': '25px', 'width': '60px', 'padding-right': '0px', 'display': display},
         ),
     ]
     return row
