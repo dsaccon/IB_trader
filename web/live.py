@@ -1,6 +1,7 @@
 #!/usr/local/bin/python3
 
-# -*- coding: utf-8 -*-
+import random
+import time
 import dash
 import dash_daq as daq
 import dash_core_components as dcc
@@ -112,53 +113,6 @@ def update_port(paper_live, connection_type):
     trader_action.port = _val
     return _val
 
-
-#@app.callback(Output('session-state', 'data'),
-#            [Input('add-instrument-row', 'n_clicks')]
-#            + [Input(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)],
-#            [State(f'{n}-row-input-symbol', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-strategy', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-size', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-period', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-ema-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-lrc-periods', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-order-type', 'value') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-continue-session', 'on') for n in range(0, MAX_INSTRUMENTS)]
-#            + [State(f'{n}-row-input-start-stop', 'on') for n in range(0, MAX_INSTRUMENTS)])
-#def update_instruments(n_clicks, *startstop_rows):
-#    ctx = dash.callback_context
-#    start_stop = startstop_rows[:MAX_INSTRUMENTS]
-#    rows = startstop_rows[MAX_INSTRUMENTS:]
-#
-#    instruments = get_instrument_config(rows, MAX_INSTRUMENTS)
-#    if '-row-input-start-stop' in ctx.triggered[0]['prop_id']:
-#        # Pick out updated instrument's row from state
-#        i = int(ctx.triggered[0]['prop_id'].split('-')[0])
-#        instrument = rows[i]
-#        _instruments = {i[0]:i[1:] for i in instruments}
-#        row_defaults = ('HACandles', 10, 1, 30, 14, 'MKT', False, True)
-#        if not instrument:
-#            # No-op without a user-inputted instrument name
-#            pass
-#        else:
-#            # Stopping: doesn't matter what field vals are
-#            # Starting: User-inputted instr name + defaults for unfilled fields
-#            new_row = [
-#                v if v else row_defaults[i]
-#                for i, v in enumerate(_instruments[instrument][:-1])
-#            ]
-#            new_row = tuple(new_row) + (_instruments[instrument][-1],)
-#            if not _instruments == {}:
-#                trader_action.updates((instrument,) + new_row)
-#
-#    # Trigger new instrument to be added to trader
-#    rows = state_to_rows(trader_action.state, MAX_INSTRUMENTS)
-#
-#    if ctx.triggered[0]['prop_id'] == 'add-instrument-row.n_clicks':
-#        rows = rows + (True,)
-#
-#    return rows
-
 @app.callback(Output('session-state', 'data'),
             [Input('add-instrument-row', 'n_clicks'),
             Input('load-previous-session', 'on')]
@@ -209,8 +163,9 @@ def update_instruments(n_clicks, load_previous_session, *args):
                 if sess[-2]
             }
             rows = state_to_rows(state, MAX_INSTRUMENTS)
-            for sess in sessions:
+            for i, sess in enumerate(sessions):
                 if sess[-2]:
+                    time.sleep(0.2 + random.random()/5) # Throttle to ease load on system
                     trader_action.updates(sess)
             return rows
 
